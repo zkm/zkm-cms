@@ -163,6 +163,16 @@ class Posts extends ApiController
             'published_at'      => $publishedAt !== '' ? date('Y-m-d H:i:s', strtotime($publishedAt)) : ($status === 'published' ? date('Y-m-d H:i:s') : null),
         ];
 
+        // The editor's date field has no seconds. If the minute is unchanged, keep the
+        // stored time, so saving doesn't move the post's date (and its feed entry).
+        if ($id !== null && $row['published_at'] !== null) {
+            $stored = $posts->find($id)['published_at'] ?? null;
+
+            if ($stored !== null && substr($stored, 0, 16) === substr($row['published_at'], 0, 16)) {
+                $row['published_at'] = $stored;
+            }
+        }
+
         if ($id === null) {
             $row['author_id'] = $this->userId();
             $id               = (int) $posts->insert($row);

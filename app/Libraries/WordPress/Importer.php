@@ -21,7 +21,9 @@ use RuntimeException;
  * settings, and redirects for old slugs.
  *
  * It only reads from WordPress. Rows are matched on their WordPress ID, so running it
- * again updates what it imported before; posts created in zkm-cms are left alone.
+ * again updates what it imported before; posts created in zkm-cms are left alone, and so
+ * are imported posts that have since been edited in zkm-cms (they have a revision),
+ * unless $overwriteEdited is set.
  */
 class Importer
 {
@@ -42,6 +44,9 @@ class Importer
 
     /** @var array<string, int> */
     public array $counts = [];
+
+    /** Re-import posts that were edited in zkm-cms after an earlier import, losing those edits. */
+    public bool $overwriteEdited = false;
 
     /** @var callable(string): void */
     private $log;
@@ -163,13 +168,25 @@ class Importer
             ->orderBy('ID')
             ->get()->getResultArray();
 
-        $ids   = array_column($rows, 'ID');
-        $meta  = $this->postMeta($ids, ['_thumbnail_id']);
-        $terms = $this->postTerms($ids);
-        $posts = model(PostModel::class);
+        $ids    = array_column($rows, 'ID');
+        $meta   = $this->postMeta($ids, ['_thumbnail_id']);
+        $terms  = $this->postTerms($ids);
+        $posts  = model(PostModel::class);
+        $edited = $this->overwriteEdited ? [] : $this->editedLocally();
+        $kept   = [];
 
         foreach ($rows as $row) {
-            $id        = (int) $row['ID'];
+            $id = (int) $row['ID'];
+
+            // Edited in zkm-cms since the last import: keep those edits.
+            if (isset($edited[$id])) {
+                $this->postIds[$id] = $edited[$id]['id'];
+                $kept[]             = $edited[$id]['title'];
+
+                continue;
+            }
+
+            $converted = $this->converter->convert($row['post_content']);
             $converted = $this->converter->convert($row['post_content']);
             $postTerms = $terms[$id] ?? [];
 
@@ -203,6 +220,10 @@ class Importer
         }
 
         foreach ($rows as $row) {
+            if (isset($edited[(int) $row['ID']])) {
+                continue;
+            }
+
             if ((int) $row['post_parent'] > 0 && isset($this->postIds[(int) $row['post_parent']])) {
                 $posts->update($this->postIds[(int) $row['ID']], ['parent_id' => $this->postIds[(int) $row['post_parent']]]);
             }
@@ -212,6 +233,11 @@ class Importer
         ksort($byStatus);
         $this->counts += $byStatus;
         ($this->log)('Posts and pages: ' . count($rows) . ' (' . http_build_query($byStatus, '', ', ') . ')');
+
+        if ($kept !== []) {
+            $this->counts['kept (edited in zkm-cms)'] = count($kept);
+            ($this->log)('Kept, because they were edited in zkm-cms (use --overwrite-edited to replace them): ' . implode('; ', $kept));
+        }
     }
 
     private function importComments(): void
@@ -371,6 +397,29 @@ class Importer
 
         $this->counts['old-slug redirects'] = $count;
         ($this->log)('Old-slug redirects: ' . $count);
+    }
+
+    /**
+     * Imported posts that have a revision, i.e. were saved in the zkm-cms admin.
+     *
+     * @return array<int, array{id: int, title: string}> WordPress ID => local post
+     */
+    private function editedLocally(): array
+    {
+        $rows = model(PostModel::class)->db->table('posts')
+            ->select('posts.id, posts.wp_id, posts.title')
+            ->join('revisions', 'revisions.post_id = posts.id')
+            ->where('posts.wp_id IS NOT NULL')
+            ->groupBy('posts.id')
+            ->get()->getResultArray();
+
+        $edited = [];
+
+        foreach ($rows as $row) {
+            $edited[(int) $row['wp_id']] = ['id' => (int) $row['id'], 'title' => $row['title']];
+        }
+
+        return $edited;
     }
 
     /**
