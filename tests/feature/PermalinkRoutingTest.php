@@ -86,6 +86,12 @@ final class PermalinkRoutingTest extends CIUnitTestCase
         $archive->assertOK();
         $archive->assertSee('War and Peace');
         $this->getPath('/category/nope/')->assertStatus(404);
+
+        // A category with only private posts is gone, rather than an empty 200 page.
+        $empty = model(TermModel::class)->insert(['taxonomy' => 'category', 'name' => 'Old', 'slug' => 'old']);
+        $secret = model(PostModel::class)->where('slug', 'secret')->first();
+        model(PostModel::class)->syncTerms((int) $secret['id'], [$empty]);
+        $this->getPath('/category/old/')->assertStatus(410);
     }
 
     public function testPrivatePostsAreHidden(): void
