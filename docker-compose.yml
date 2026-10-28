@@ -1,0 +1,64 @@
+# Local stack for zkm-cms. Site: http://localhost:8090  Mail: http://localhost:8025
+services:
+  app:
+    build:
+      context: docker/app
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    # spark commands run as www-data too: docker compose exec app php spark ...
+    user: www-data
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8090}:80"
+    environment:
+      CI_ENVIRONMENT: development
+      app_baseURL: "http://localhost:${APP_PORT:-8090}/"
+      database_default_hostname: db
+      database_default_database: zkm
+      database_default_username: zkm
+      database_default_password: zkm
+      database_wordpress_hostname: db
+      database_wordpress_database: wp_import
+      database_wordpress_username: zkm
+      database_wordpress_password: zkm
+      cache_handler: redis
+      cache_redis_host: valkey
+      email_protocol: smtp
+      email_SMTPHost: mailpit
+      email_SMTPPort: 1025
+      email_SMTPCrypto: ""
+    volumes:
+      - ./:/var/www/html
+
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_USER: zkm
+      MARIADB_PASSWORD: zkm
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "${MAIL_PORT:-8025}:8025"
+
+volumes:
+  db_data:

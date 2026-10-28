@@ -1,0 +1,39 @@
+{
+    "name": "zkm/zkm-cms",
+    "description": "A small CMS for zachschneider.com (CodeIgniter 4 + Vue 3), replacing WordPress",
+    "license": "MIT",
+    "type": "project",
+    "homepage": "https://www.zachschneider.com",
+    "require": {
+        "php": "^8.2",
+        "codeigniter4/framework": "^4.7",
+        "league/commonmark": "^2.7"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.9",
+        "mikey179/vfsstream": "^1.6",
+        "phpunit/phpunit": "^10.5.16"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Config\\": "app/Config/"
+        },
+        "exclude-from-classmap": [
+            "**/Database/Migrations/**"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\Support\\": "tests/_support"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

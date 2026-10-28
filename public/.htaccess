@@ -1,0 +1,44 @@
+Options -Indexes -MultiViews
+ServerSignature Off
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Requests already routed to the front controller are done.
+    RewriteRule ^index\.php(/|$) - [L]
+
+    # Media used to live under WordPress's uploads folder.
+    RewriteRule ^wp-content/uploads/(.*)$ /uploads/$1 [R=301,L]
+
+    # Old WordPress endpoints that bots still probe: answer 410 without starting PHP.
+    RewriteRule ^(wp-admin|wp-includes|wp-content|wp-json)(/|$) - [G,L]
+    RewriteRule ^(wp-login|xmlrpc|wp-cron|wp-config|wp-signup|wp-trackback)\.php$ - [G,L]
+
+    # Old feed variants all point at the one feed.
+    RewriteRule ^.+/feed/?$ /feed/ [R=301,L]
+    RewriteCond %{REQUEST_URI} !^/feed/$
+    RewriteRule ^feed(/rss2?|/atom)?/?$ /feed/ [R=301,L]
+
+    # Nothing under uploads runs as code.
+    RewriteRule ^uploads/.*\.(php\d?|phtml|phar)$ - [F,L]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^([\s\S]*)$ index.php/$1 [L,NC,QSA]
+
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    <FilesMatch "\.(css|js|woff2?|svg|png|jpe?g|gif|webp|avif|ico)$">
+        Header set Cache-Control "public, max-age=2592000"
+    </FilesMatch>
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    ErrorDocument 404 index.php
+</IfModule>

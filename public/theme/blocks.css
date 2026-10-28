@@ -1,0 +1,302 @@
+/*
+ * Layout for content imported from the WordPress block editor.
+ * A trimmed copy of the core block-library rules for the blocks the site uses
+ * (image, gallery, media-text, columns, cover, quote, pullquote, embed, table,
+ * button, separator, code). Colours come from the theme in style.css.
+ */
+
+.entry-content img {
+  height: auto;
+  max-width: 100%;
+}
+
+.entry-content figure {
+  margin: 0 0 1.5em;
+}
+
+.entry-content figcaption,
+.wp-caption-text {
+  font-size: 0.9em;
+  margin: 0.5em 0 1em;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.aligncenter {
+  clear: both;
+  display: table;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* style.css zeroes figure margins (.entry-content figure, .entry-content .wp-block-image);
+   centred blocks keep auto margins. */
+.entry-content .aligncenter,
+.entry-content .wp-block-image.aligncenter {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.entry-content .aligncenter img {
+  margin: 0 auto;
+}
+
+.alignleft {
+  float: left;
+  margin: 0.5em 1em 0.5em 0;
+}
+
+.alignright {
+  float: right;
+  margin: 0.5em 0 0.5em 1em;
+}
+
+.alignwide,
+.alignfull {
+  clear: both;
+}
+
+.has-text-align-center {
+  text-align: center;
+}
+
+.has-text-align-right {
+  text-align: right;
+}
+
+.has-text-align-left {
+  text-align: left;
+}
+
+.wp-block-image img {
+  box-sizing: border-box;
+  height: auto;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+.wp-block-image.is-style-rounded img,
+.is-style-rounded img {
+  border-radius: 9999px;
+}
+
+/* Gallery: the old <ul> markup and the newer nested-figure markup. */
+.wp-block-gallery,
+.blocks-gallery-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  list-style: none;
+  margin: 0 0 1.5em;
+  padding: 0;
+}
+
+.wp-block-gallery > figure,
+.wp-block-gallery .blocks-gallery-item {
+  flex: 1 1 calc(50% - 0.5em);
+  margin: 0;
+}
+
+.wp-block-gallery.columns-3 > figure,
+.wp-block-gallery.columns-3 .blocks-gallery-item {
+  flex-basis: calc(33.333% - 0.5em);
+}
+
+.wp-block-gallery img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.wp-block-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2em;
+  margin-bottom: 1.5em;
+}
+
+.wp-block-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.wp-block-media-text {
+  align-items: center;
+  display: grid;
+  gap: 1.5em;
+  grid-template-columns: 50% 1fr;
+  margin-bottom: 1.5em;
+}
+
+.wp-block-media-text.has-media-on-the-right {
+  grid-template-columns: 1fr 50%;
+}
+
+.wp-block-media-text.has-media-on-the-right .wp-block-media-text__media {
+  order: 2;
+}
+
+.wp-block-media-text__media {
+  margin: 0;
+}
+
+.wp-block-media-text__media img {
+  display: block;
+  width: 100%;
+}
+
+.wp-block-cover {
+  align-items: center;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5em;
+  min-height: 320px;
+  overflow: hidden;
+  padding: 1em;
+  position: relative;
+}
+
+.wp-block-cover__image-background {
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+  position: absolute;
+  width: 100%;
+}
+
+.wp-block-cover.has-background-dim::before {
+  background: rgba(0, 0, 0, 0.5);
+  content: "";
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.wp-block-cover__inner-container {
+  color: #fff;
+  position: relative;
+  z-index: 2;
+}
+
+.wp-block-quote {
+  border-left: 3px solid currentColor;
+  margin: 0 0 1.5em;
+  padding-left: 1em;
+}
+
+.wp-block-quote cite,
+.wp-block-pullquote cite {
+  display: block;
+  font-size: 0.9em;
+  font-style: normal;
+  opacity: 0.8;
+}
+
+.wp-block-pullquote {
+  border-bottom: 3px solid currentColor;
+  border-top: 3px solid currentColor;
+  margin: 0 0 1.5em;
+  padding: 2em 0;
+  text-align: center;
+}
+
+.wp-block-pullquote blockquote {
+  margin: 0;
+}
+
+.wp-block-pullquote p {
+  font-size: 1.5em;
+  line-height: 1.4;
+}
+
+.wp-block-embed {
+  margin: 0 0 1.5em;
+}
+
+.zkm-embed {
+  aspect-ratio: 16 / 9;
+  position: relative;
+  width: 100%;
+}
+
+.zkm-embed iframe {
+  border: 0;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.wp-block-table {
+  margin: 0 0 1.5em;
+  overflow-x: auto;
+}
+
+.wp-block-table table,
+.entry-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.wp-block-table td,
+.wp-block-table th,
+.entry-content td,
+.entry-content th {
+  border: 1px solid var(--zkm-border, currentColor);
+  padding: 0.5em;
+}
+
+.wp-block-buttons,
+.wp-block-button {
+  margin-bottom: 1.5em;
+}
+
+.wp-block-button.aligncenter {
+  display: block;
+  text-align: center;
+}
+
+.wp-block-button__link {
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  display: inline-block;
+  padding: 0.6em 1.4em;
+  text-decoration: none;
+}
+
+.wp-block-separator,
+.entry-content hr {
+  border: 0;
+  border-top: 1px solid var(--zkm-border, currentColor);
+  margin: 2em auto;
+}
+
+.wp-block-code,
+.wp-block-preformatted,
+.entry-content pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+@media (max-width: 600px) {
+  .wp-block-columns {
+    flex-direction: column;
+  }
+
+  .wp-block-media-text,
+  .wp-block-media-text.has-media-on-the-right {
+    grid-template-columns: 1fr;
+  }
+
+  .wp-block-media-text.has-media-on-the-right .wp-block-media-text__media {
+    order: 0;
+  }
+
+  .alignleft,
+  .alignright {
+    float: none;
+    margin: 0 0 1em;
+  }
+}
