@@ -28,7 +28,7 @@ class UserTotp extends BaseCommand
         }
 
         if (CLI::getOption('disable')) {
-            $users->update($user['id'], ['totp_secret' => null, 'totp_last_step' => null]);
+            $users->update($user['id'], ['totp_secret' => null, 'totp_last_step' => null, 'session_version' => (int) $user['session_version'] + 1]);
             CLI::write('Two-factor sign-in is off.', 'yellow');
 
             return EXIT_SUCCESS;
@@ -47,7 +47,11 @@ class UserTotp extends BaseCommand
             return EXIT_ERROR;
         }
 
-        $users->update($user['id'], ['totp_secret' => SecretBox::seal($secret), 'totp_last_step' => Totp::matchStep($secret, $code)]);
+        $users->update($user['id'], [
+            'totp_secret'     => SecretBox::seal($secret),
+            'totp_last_step'  => Totp::matchStep($secret, $code),
+            'session_version' => (int) $user['session_version'] + 1,
+        ]);
         CLI::write('Two-factor sign-in is on.', 'green');
 
         return EXIT_SUCCESS;

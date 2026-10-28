@@ -38,8 +38,8 @@ class UserCreate extends BaseCommand
         $hash     = password_hash($password, PASSWORD_DEFAULT);
 
         if ($existing !== null) {
-            $users->update($existing['id'], ['password_hash' => $hash] + ($name ? ['name' => $name] : []));
-            CLI::write("Password updated for {$email}.", 'green');
+            $users->update($existing['id'], ['password_hash' => $hash, 'session_version' => (int) $existing['session_version'] + 1] + ($name ? ['name' => $name] : []));
+            CLI::write("Password updated for {$email}. Everyone signed in as this user was signed out.", 'green');
         } else {
             $users->insert(['email' => $email, 'name' => $name ?? strstr($email, '@', true), 'password_hash' => $hash]);
             CLI::write("Created {$email}.", 'green');

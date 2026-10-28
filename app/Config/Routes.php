@@ -14,6 +14,10 @@ $routes->group('admin', static function (RouteCollection $routes) {
 
     $routes->group('api', ['filter' => 'adminauth', 'namespace' => 'App\Controllers\Admin\Api'], static function (RouteCollection $routes) {
         $routes->get('me', 'Session::me');
+        $routes->get('account', 'Account::show');
+        $routes->put('account/password', 'Account::password');
+        $routes->put('account/email', 'Account::email');
+        $routes->post('account/sign-out-others', 'Account::signOutOthers');
         $routes->get('dashboard', 'Session::dashboard');
 
         $routes->get('posts', 'Posts::index');

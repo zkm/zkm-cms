@@ -36,6 +36,7 @@ class Filters extends BaseFilters
         'performance'   => PerformanceMetrics::class,
         'adminauth'     => \App\Filters\AdminAuth::class,
         'zkmheaders'    => \App\Filters\SecurityHeaders::class,
+        'admingate'     => \App\Filters\AdminGate::class,
     ];
 
     /**
@@ -111,6 +112,8 @@ class Filters extends BaseFilters
     public array $filters = [
         // CSRF only on the admin. Public pages never start a session, so they stay cacheable;
         // the contact form relies on its honeypot and rate limit instead.
-        'csrf' => ['before' => ['admin', 'admin/*']],
+        // Who may reach the admin at all (IP allowlist, Cloudflare Access) runs first.
+        'admingate' => ['before' => ['admin', 'admin/*']],
+        'csrf'      => ['before' => ['admin', 'admin/*']],
     ];
 }

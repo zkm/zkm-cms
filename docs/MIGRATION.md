@@ -25,6 +25,8 @@ Server-specific values (droplet ID, admin login, staging hostname) are written a
 | 2 | **Deploy script.** Build locally (`composer install --no-dev`, `npm run build`), then rsync to the server without `writable/`, `public/uploads/` or `.env`. | small |
 | 3 | **Lock the origin to Cloudflare.** Allow ports 80 and 443 on the droplet only from Cloudflare's ranges (DigitalOcean firewall), so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | small |
 | 4 | **fail2ban jail with the Cloudflare action** (see *Security* below). A firewall ban on the droplet does nothing, because visitors reach it through Cloudflare's addresses. | small |
+| 4a | **Admin access gate:** Cloudflare Access in front of `/admin`, plus the AUD check in `.env` (see *Security → Admin access*). Do this before the first sign-in on staging. | small |
+| 4b | **Backups:** nightly database dump and off-box copy of uploads; droplet backups on (see *Security → Backups*). | small |
 | 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. Optional. | optional |
 | 6 | Review the 155 private and 47 draft posts. Old classic-editor posts get automatic paragraphs and may need touch-ups. Some 2008–09 posts embed Flash, which no browser plays now. | your call |
 | 7 | The one past Fluent Forms submission isn't migrated. Export it from WP admin if you want it. | trivial |
@@ -140,7 +142,59 @@ Done in the code (tests in `tests/`, HTTP checks in `scripts/security-check.py`,
   - WordPress endpoints return 410.
   - `composer audit` and `npm audit` run in CI, and Dependabot opens update PRs.
 
-On the server:
+- **Sessions:** a session ends after 8 hours idle or 12 hours in total, and immediately if the user is deleted. Changing the password, the sign-in email or two-factor signs out every other session. The **Account** page also has "Sign out everywhere else".
+- **Logging:** production keeps warnings and info, so failed, throttled and successful sign-ins reach `writable/logs/` for fail2ban. The framework's default drops them.
+
+### Admin access
+
+Anyone on the internet can reach `/admin/login` until you restrict it. Rate limits and two-factor protect the sign-in, but restricting access also stops guessing and lock-out attempts. Two options, which can be combined; anyone outside them gets the site's normal 404:
+
+1. **Cloudflare Access (recommended).** It's free for up to 50 users, and you sign in through Cloudflare (a one-time email code, or Google/GitHub) before the admin page is even sent.
+   1. Cloudflare dashboard → **Zero Trust** → **Access** → **Applications** → **Add an application** → **Self-hosted**.
+   2. Domain `www.zachschneider.com`, path `admin`, and add a second entry for path `admin/*`. Set the session duration to, say, 24 hours.
+   3. Policy: **Allow**, *Emails*, set to your address only.
+   4. Copy the application's **Audience (AUD) tag** (Overview tab), and note your team name (Settings → Custom Pages, `<team>.cloudflareaccess.com`).
+   5. In `.env`, set `admin.accessTeam = '<team>'`, `admin.accessAud = '<AUD tag>'` and `admin.accessEmails = '<your email>'`.
+
+   The app checks Cloudflare's signed token on every admin request. Without that check, someone who reached the server's IP directly could skip Access. The keys are fetched from Cloudflare and cached for an hour.
+2. **IP allowlist.** `admin.allowedIps = '203.0.113.7, 2001:db8::/48'` uses your home or VPN addresses, read through Cloudflare (`CF-Connecting-IP`). Home connections often change address, so pair it with Access or keep a way in, such as SSH, to edit `.env`.
+
+Then check from a machine outside the allowed set: `scripts/security-check.py https://www.zachschneider.com --expect-admin-gated` should report `/admin` as 404. If you lock yourself out, comment the lines in `.env` over SSH.
+
+### Defence in depth for uploads
+
+`public/uploads/.htaccess` stops PHP running in the uploads folder, but only if Apache reads `.htaccess` files there. Repeat the rule in the vhost so it holds even if `AllowOverride` changes:
+
+```apache
+<Directory /var/www/zkm-cms/public/uploads>
+    AllowOverride All
+    <FilesMatch "\.(php\d?|phtml|phar|html?|shtml|xhtml)$">
+        Require all denied
+    </FilesMatch>
+    Header always set Content-Security-Policy "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'; sandbox"
+    Header always set X-Content-Type-Options "nosniff"
+</Directory>
+```
+
+`scripts/security-check.py https://www.zachschneider.com` checks both from the outside, without writing anything to the server.
+
+### Backups
+
+The droplet becomes the only copy of anything you write after cutover.
+
+- **Nightly:** dump the database (`mysqldump --single-transaction zkm | gzip > /var/backups/zkm-$(date +%F).sql.gz`, keeping 14 days) and `rsync` `public/uploads/` and the dumps off the box, for example to DigitalOcean Spaces or your RAID at home.
+- **Weekly:** turn on DigitalOcean droplet backups (20% of the droplet price) for whole-machine restores.
+- **Keep `.env` in your password manager,** especially `encryption.key`. Without it, the stored authenticator secrets can't be read; you'd run `user:totp` again.
+- **Test a restore once,** into the local Docker stack: load the dump into `zkm` and copy the uploads into `public/uploads/`.
+
+### What's left (accepted risks)
+
+- **Contact form spam:** it's limited to 5 messages an hour per address, with a honeypot. If spam gets through, add Cloudflare Turnstile.
+- **One admin, no recovery codes:** if you lose your phone, run `php spark user:totp` over SSH. SSH access is the recovery path, so keep it safe.
+- **Third-party scripts:** the Google tag and Tag Manager run on public pages, so anyone who can edit the GTM container can run script on the site. Keep that Google account protected with two-factor.
+- **Trust in Cloudflare:** Cloudflare sees all traffic and is trusted for visitor addresses and Access identities.
+
+### Server setup
 
 1. `.env` needs `encryption.key` from `php spark key:generate` **before** `php spark user:totp`. Back up the key: without it, the stored authenticator secrets can't be read, and you'd have to run `user:totp` again.
 2. fail2ban, banning at Cloudflare. Create an API token with *Account Filter Lists: Edit* or *Zone Firewall: Edit*, then add:

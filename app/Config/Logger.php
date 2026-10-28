@@ -39,7 +39,9 @@ class Logger extends BaseConfig
      *
      * @var int|list<int>
      */
-    public $threshold = (ENVIRONMENT === 'production') ? 4 : 9;
+    // Production keeps errors plus warnings (failed and throttled admin sign-ins, which
+    // fail2ban reads) and info (successful sign-ins). The framework default of 4 drops both.
+    public $threshold = (ENVIRONMENT === 'production') ? [1, 2, 3, 4, 5, 7] : 9;
 
     /**
      * --------------------------------------------------------------------------

@@ -107,6 +107,24 @@ jobs:
       - name: HTTP security checks
         run: python3 scripts/security-check.py http://localhost:8090 --uploads-dir public/uploads --email ci@example.test --password ci-check-password-1234
 
+      # A real browser clicking through the admin (menu, editor, sessions).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+
+      - name: Admin smoke test (browser)
+        working-directory: admin-ui
+        env:
+          ADMIN_EMAIL: ci@example.test
+          ADMIN_PASSWORD: ci-check-password-1234
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:smoke -- http://localhost:8090
+
       - name: Stack logs
         if: failure()
         run: docker compose logs app db

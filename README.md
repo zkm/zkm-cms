@@ -41,6 +41,21 @@ Then open http://localhost:8090 for the site and http://localhost:8090/admin/ fo
 
 `wp:load` only writes to a database named `wp_import*`, and it drops the tables it loads. `wp:import` reads the `wordpress` database group, which can point at a live WordPress database through a read-only user.
 
+## Your sign-in
+
+You sign in with an email address and a password. In production, an authenticator code is required too.
+
+| To… | In the admin | On the server |
+| --- | --- | --- |
+| Change your password | **Account → Change password** | `php spark user:create <email>` resets it |
+| Change the sign-in email | **Account → Change sign-in email** | `php spark user:email <old> <new>` |
+| Turn on two-factor, or move it to a new phone | | `php spark user:totp <email>` |
+| Sign out every other session | **Account → Sign out everywhere else** | Any of the commands above |
+
+The admin asks for your current password (and code) before any of these changes. Each change signs out every other session. Use a sign-in email that isn't public, such as a private alias, so nobody can guess it or lock you out with wrong guesses. Sessions end after 8 hours idle or 12 hours in total.
+
+To limit who can reach `/admin` at all (an IP allowlist and/or Cloudflare Access), see *Security → Admin access* in [docs/MIGRATION.md](docs/MIGRATION.md).
+
 ## How the content works
 
 | WordPress | zkm-cms |
@@ -65,9 +80,10 @@ scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090
 
 - **PHPUnit** uses the `zkm_tests` database. Besides the content and routing tests, it includes security tests: every API route refusing signed-out requests, CSRF, code replay, rate limits, response headers, and the input sanitisers.
 - **`security-check.py`** tests what only the web server shows: private files aren't served, nothing under `/uploads/` runs, and the real response headers. `--uploads-dir` plants probe files, so use it only on a local or CI copy.
+- **`admin-ui/tests/smoke.mjs`** clicks through the admin in a real browser: every menu item, the editor, and signing out other sessions (`ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run test:smoke` in `admin-ui/`).
 - **`check-urls.sh`** reads every URL from the live WordPress sitemap and checks that each one still works on the new site.
 
-CI runs PHPUnit and `security-check.py` against the Docker stack, plus `composer audit` and `npm audit`, on every pull request. See *Security* in [docs/MIGRATION.md](docs/MIGRATION.md).
+CI runs PHPUnit, and `security-check.py` and the smoke test against the Docker stack, plus `composer audit` and `npm audit`, on every pull request. See *Security* in [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Layout
 
