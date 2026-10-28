@@ -2,7 +2,8 @@
 //
 //   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='…' node tests/smoke.mjs http://localhost:8090
 //
-// Signs in, opens every page from the side menu, opens a post in the editor, and checks
+// Signs in, opens every page from the side menu, writes a draft post in the editor (and
+// deletes it again), and checks
 // that "Sign out everywhere else" ends a second browser's session but not this one.
 // Fails on any browser console error. Set CHROMIUM_PATH to use an installed Chromium
 // instead of Playwright's (npx playwright install chromium).
@@ -57,12 +58,29 @@ try {
   }
 
   console.log('Editor')
+  const title = `Smoke test ${Date.now()}`
+  page.on('dialog', (dialog) => dialog.accept())
   await page.click('.sidenav >> text="Posts"')
-  await page.waitForSelector('table.list tbody tr a')
-  await page.click('table.list tbody tr a >> nth=0')
+  await page.click('text="New post"')
   await page.waitForSelector('.body-input')
-  const preview = await page.frameLocator('iframe.preview').locator('.entry-title').textContent({ timeout: 5000 }).catch(() => null)
-  check(Boolean(preview), 'a post opens in the editor with a preview')
+  await page.fill('.title-input', title)
+  await page.fill('.body-input', 'Some **bold** text.')
+  const bold = await page.frameLocator('iframe.preview').locator('.entry-content strong').textContent({ timeout: 5000 }).catch(() => null)
+  check(bold === 'bold', 'the preview renders Markdown')
+  await page.click('button:has-text("Save draft")')
+  const saved = await page.waitForURL(/\/admin\/edit\/\d+$/, { timeout: 5000 }).then(() => true, () => false)
+  check(saved, 'a new draft saves')
+
+  // Delete it again from the list.
+  await page.click('.sidenav >> text="Posts"')
+  await page.waitForSelector('table.list tbody tr')
+  check(await page.locator('table.list tbody tr >> nth=0').textContent().then((t) => t.includes(title)), 'the new draft is first in the list')
+  await page.fill('input[type=search]', title)
+  await page.click('button:has-text("Search")')
+  const row = page.locator('table.list tbody tr', { hasText: title })
+  await row.locator('button:has-text("Delete")').click()
+  const gone = await row.waitFor({ state: 'detached', timeout: 5000 }).then(() => true, () => false)
+  check(gone, 'the draft deletes')
   await page.click('.sidenav >> text="Dashboard"')
 
   console.log('Sessions')
@@ -71,7 +89,8 @@ try {
   const form = page.locator('form', { hasText: 'Sign out everywhere else' })
   await form.locator('input[type=password]').fill(password)
   await form.locator('button').click()
-  await page.waitForSelector('.notice')
+  // Wait for this change's own confirmation (an earlier notice may still be showing).
+  await page.waitForSelector('.notice:has-text("Every other session was signed out")')
   check((await page.request.get(`${base}/admin/api/me`)).status() === 200, 'this session stays signed in')
   check((await other.request.get(`${base}/admin/api/me`)).status() === 401, 'the other session is signed out')
 

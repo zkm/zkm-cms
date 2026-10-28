@@ -36,8 +36,12 @@ class Posts extends ApiController
         }
 
         $total = $model->countAllResults(false);
-        $rows  = $model->orderBy($type === 'page' ? 'posts.title' : 'posts.published_at', $type === 'page' ? 'ASC' : 'DESC')
-            ->findAll($perPage, ($page - 1) * $perPage);
+        // Posts newest first; drafts without a date sort by when they were last edited,
+        // so a draft you just started is at the top rather than on the last page.
+        $type === 'page'
+            ? $model->orderBy('posts.title', 'ASC')
+            : $model->orderBy('COALESCE(posts.published_at, posts.updated_at)', 'DESC', false);
+        $rows = $model->findAll($perPage, ($page - 1) * $perPage);
 
         $links = new Permalinks();
 
