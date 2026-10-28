@@ -11,8 +11,11 @@ class WpImport extends BaseCommand
     protected $group       = 'WordPress';
     protected $name        = 'wp:import';
     protected $description = 'Import posts, pages, media, menus and settings from the wordpress database group. Safe to re-run.';
-    protected $usage       = 'wp:import [--uploads <dir>]';
-    protected $options     = ['--uploads' => 'A WordPress uploads folder to copy into public/uploads (default: writable/wp-import/uploads, if it exists)'];
+    protected $usage       = 'wp:import [--uploads <dir>] [--overwrite-edited]';
+    protected $options     = [
+        '--uploads'          => 'A WordPress uploads folder to copy into public/uploads (default: writable/wp-import/uploads, if it exists)',
+        '--overwrite-edited' => 'Also re-import posts edited in zkm-cms since the last import, replacing those edits',
+    ];
 
     public function run(array $params)
     {
@@ -26,7 +29,8 @@ class WpImport extends BaseCommand
             $uploads = WRITEPATH . 'wp-import/uploads';
         }
 
-        $importer = new Importer(null, static fn (string $line) => CLI::write('  ' . $line));
+        $importer                  = new Importer(null, static fn (string $line) => CLI::write('  ' . $line));
+        $importer->overwriteEdited = CLI::getOption('overwrite-edited') !== null;
         CLI::write('Importing from ' . $importer->siteUrl() . ($uploads ? " (uploads: {$uploads})" : ' (no uploads folder)'));
         $importer->run(is_string($uploads) ? $uploads : null);
         CLI::write('Done.', 'green');
