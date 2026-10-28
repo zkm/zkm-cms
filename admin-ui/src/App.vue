@@ -16,6 +16,7 @@ const nav = [
   { to: '/redirects', label: 'Redirects' },
   { to: '/messages', label: 'Messages' },
   { to: '/settings', label: 'Settings' },
+  { to: '/account', label: 'Account' },
 ]
 </script>
 
@@ -26,7 +27,7 @@ const nav = [
       <RouterLink to="/" class="brand">zkm-cms</RouterLink>
       <div class="topbar-actions">
         <a href="/" target="_blank" rel="noopener">View site ↗</a>
-        <span class="user">{{ userName }}</span>
+        <RouterLink to="/account" class="user">{{ userName }}</RouterLink>
         <button type="button" class="link-button" @click="signOut">Sign out</button>
       </div>
     </header>

@@ -3,15 +3,19 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Filters\AdminAuth;
 use App\Libraries\SecretBox;
 use App\Libraries\Totp;
 use App\Models\UserModel;
 
 class Auth extends BaseController
 {
+    /** Failed sign-ins per account in 15 minutes before it is locked for the rest of the window. */
+    private const ACCOUNT_FAILURES = 10;
+
     public function login()
     {
-        if (session('user_id') !== null) {
+        if (AdminAuth::currentUser() !== null) {
             return redirect()->to('/admin/');
         }
 
@@ -29,11 +33,13 @@ class Auth extends BaseController
         $email    = strtolower(trim((string) $this->request->getPost('email')));
         $password = (string) $this->request->getPost('password');
 
-        // Five tries a minute per address, and ten per 15 minutes per account so that
-        // spreading guesses over many addresses doesn't help. fail2ban watches these log lines.
-        $throttler = service('throttler');
+        // Five tries a minute per address, and ten failures per 15 minutes per account, so
+        // spreading guesses over many addresses doesn't help. Only failures count toward the
+        // account limit, and signing in clears it. fail2ban watches these log lines.
+        $accountKey = 'login-failures-' . md5($email);
+        $failures   = (int) cache($accountKey);
 
-        if (! $throttler->check('login-' . md5($ip), 5, MINUTE) || ! $throttler->check('login-user-' . md5($email), 10, 15 * MINUTE)) {
+        if (! service('throttler')->check('login-' . md5($ip), 5, MINUTE) || $failures >= self::ACCOUNT_FAILURES) {
             log_message('warning', "Admin sign-in throttled for {$ip}");
 
             return $this->fail('Too many attempts. Wait a few minutes and try again.');
@@ -65,11 +71,13 @@ class Auth extends BaseController
         }
 
         if (! $ok) {
+            cache()->save($accountKey, $failures + 1, 15 * MINUTE);
             log_message('warning', "Admin sign-in failed for {$ip}");
 
             return $this->fail('That email, password or code is wrong.');
         }
 
+        cache()->delete($accountKey);
         $changes = ['last_login_at' => date('Y-m-d H:i:s')];
 
         if ($step !== null) {
@@ -90,7 +98,12 @@ class Auth extends BaseController
         session()->regenerate(true);
         // A fresh CSRF token for the signed-in session.
         session()->remove(config('Security')->tokenName);
-        session()->set(['user_id' => (int) $user['id'], 'user_name' => $user['name']]);
+        session()->set([
+            'user_id'         => (int) $user['id'],
+            'user_name'       => $user['name'],
+            'session_version' => (int) $user['session_version'],
+            'signed_in_at'    => time(),
+        ]);
         log_message('info', "Admin sign-in for user {$user['id']} from {$ip}");
 
         return redirect()->to('/admin/');

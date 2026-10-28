@@ -158,6 +158,18 @@ final class AdminSecurityTest extends CIUnitTestCase
         $cache->clean();
     }
 
+    public function testSuccessfulSignInsDontCountTowardTheAccountLimit(): void
+    {
+        $this->withoutCsrf();
+
+        // Twelve good sign-ins from twelve addresses, more than the account allows in failures.
+        for ($i = 1; $i <= 12; $i++) {
+            service('superglobals')->setServer('REMOTE_ADDR', "198.51.100.{$i}");
+            $_SESSION = [];
+            $this->signIn()->assertRedirectTo('/admin/');
+        }
+    }
+
     public function testAdminPagesSendStrictHeaders(): void
     {
         $this->freshRequest();

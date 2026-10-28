@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Filters\AdminAuth;
 use App\Libraries\ContentRenderer;
 use App\Libraries\Permalinks;
 use App\Libraries\SiteCache;
@@ -110,7 +111,8 @@ class Site extends BaseController
 
         $slug  = end($segments);
         $posts = model(PostModel::class);
-        $admin = visitor_session('user_id') !== null;
+        // Drafts and private posts are visible to a valid admin session only.
+        $admin = visitor_session('user_id') !== null && AdminAuth::currentUser() !== null;
 
         $candidates = $posts->where('slug', $slug)->orderBy('type')->findAll();
 

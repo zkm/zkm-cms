@@ -4,6 +4,7 @@
     scripts/security-check.py http://localhost:8090
     scripts/security-check.py http://localhost:8090 --email you@example.com --password '…'
     scripts/security-check.py http://localhost:8090 --uploads-dir public/uploads
+    scripts/security-check.py https://www.zachschneider.com --expect-admin-gated
 
 PHPUnit covers the application code; this covers what only the web server can show:
 that private files aren't served, that nothing under /uploads/ runs, and the headers
@@ -77,6 +78,7 @@ def main():
     parser.add_argument('--email')
     parser.add_argument('--password')
     parser.add_argument('--uploads-dir')
+    parser.add_argument('--expect-admin-gated', action='store_true', help='/admin should answer 404 to this machine (IP allowlist or Cloudflare Access)')
     args = parser.parse_args()
     site = Client(args.base)
     host = urllib.parse.urlparse(args.base).netloc
@@ -95,6 +97,21 @@ def main():
     print('Uploads folder')
     status, _, body = site.request('GET', '/uploads/')
     check(status in (403, 404), f'/uploads/ is not listed -> {status}')
+
+    # Without planting files: these answers only come from public/uploads/.htaccess, so
+    # they show Apache is reading it (AllowOverride). Safe to run against production.
+    status, _, _ = site.request('GET', '/uploads/zz-missing-probe.php')
+    check(status == 403, f'uploads rules are active: a .php there is refused -> {status}', 'expected 403; is AllowOverride on for /uploads?')
+    # A real file is needed here (a missing one falls through to the app's 404): use the
+    # first /uploads/ image the home page links to.
+    _, _, home = site.request('GET', '/')
+    found = re.search(rb'(?:src|href)="(/uploads/[^"?#]+)"', home)
+    if found:
+        upload = found.group(1).decode()
+        status, headers, _ = site.request('GET', upload)
+        check(status == 200 and 'sandbox' in headers.get('Content-Security-Policy', ''), f'uploads rules are active: {upload} is served sandboxed', headers.get('Content-Security-Policy', 'no CSP'))
+    else:
+        print('  (no /uploads/ file linked from the home page to check the sandbox header on)')
 
     if args.uploads_dir:
         probes = {
@@ -123,6 +140,11 @@ def main():
                 except FileNotFoundError:
                     pass
 
+    print('Errors show no internals')
+    status, _, body = site.request('GET', '/zz-no-such-page-probe/')
+    leaked = [word for word in (b'Kint', b'Stack trace', b'APPPATH', b'SYSTEMPATH', b'vendor/codeigniter4', b'Exception') if word in body]
+    check(status == 404 and not leaked, f'404 page -> {status}', 'shows ' + b', '.join(leaked).decode() if leaked else '')
+
     print('Headers')
     status, headers, body = site.request('GET', '/')
     csp = headers.get('Content-Security-Policy', '')
@@ -137,6 +159,15 @@ def main():
     check("script-src 'self';" in csp and "frame-ancestors 'none'" in csp, 'admin CSP', csp)
     check(headers.get('X-Frame-Options') == 'DENY', 'admin cannot be framed')
     check('no-store' in headers.get('Cache-Control', ''), 'sign-in page is not cached')
+
+    if args.expect_admin_gated:
+        print('Admin gate')
+        for path in ['/admin/login', '/admin/', '/admin/api/posts']:
+            status, _, _ = site.request('GET', path)
+            check(status == 404, f'{path} is hidden from this machine -> {status}')
+        print()
+        print('All security checks passed.' if failures == 0 else f'{failures} security check(s) failed.')
+        return 1 if failures else 0
 
     print('Signed-out API and redirects')
     status, _, _ = site.request('GET', '/admin/api/posts', headers={'Accept': 'application/json'})

@@ -16,6 +16,7 @@ const routes = [
   { path: '/redirects', component: () => import('./views/Redirects.vue'), meta: { title: 'Redirects' } },
   { path: '/messages', component: () => import('./views/Messages.vue'), meta: { title: 'Messages' } },
   { path: '/settings', component: () => import('./views/Settings.vue'), meta: { title: 'Settings' } },
+  { path: '/account', component: () => import('./views/Account.vue'), meta: { title: 'Account' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
