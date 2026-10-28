@@ -1,5 +1,11 @@
 # zkm-cms
 
+[![Tests](https://github.com/zkm/zkm-cms/actions/workflows/tests.yml/badge.svg)](https://github.com/zkm/zkm-cms/actions/workflows/tests.yml)
+![PHP 8.3](https://img.shields.io/badge/PHP-8.3-777BB4?logo=php&logoColor=white)
+![CodeIgniter 4.7](https://img.shields.io/badge/CodeIgniter-4.7-EF4223?logo=codeigniter&logoColor=white)
+![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
+![MariaDB 10.11](https://img.shields.io/badge/MariaDB-10.11-003545?logo=mariadb&logoColor=white)
+
 A small CMS for zachschneider.com, built to replace WordPress without changing a single public URL.
 
 - **Public site:** CodeIgniter 4 renders server-side HTML using the zkm-wp-theme design (`public/theme/`). Pages are cached in Valkey and never start a session, so Cloudflare can cache them too.
@@ -51,7 +57,7 @@ Then open http://localhost:8090 for the site and http://localhost:8090/admin/ fo
 ## Tests
 
 ```bash
-docker compose exec app vendor/bin/phpunit
+docker compose exec app vendor/bin/phpunit --no-coverage
 scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090
 ```
 
