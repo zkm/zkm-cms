@@ -57,7 +57,7 @@ Then open http://localhost:8090 for the site and http://localhost:8090/admin/ fo
 ## Tests
 
 ```bash
-docker compose exec app vendor/bin/phpunit
+docker compose exec app vendor/bin/phpunit --no-coverage
 scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090
 ```
 
