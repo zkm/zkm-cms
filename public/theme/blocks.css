@@ -215,6 +215,11 @@
   margin: 0 0 1.5em;
 }
 
+/* Embeds pasted with a fixed width (the Strava activity maps are 590px) shrink to fit. */
+.entry-content iframe {
+  max-width: 100%;
+}
+
 .zkm-embed {
   aspect-ratio: 16 / 9;
   position: relative;
