@@ -5,6 +5,7 @@
 ![CodeIgniter 4.7](https://img.shields.io/badge/CodeIgniter-4.7-EF4223?logo=codeigniter&logoColor=white)
 ![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
 ![MariaDB 10.11](https://img.shields.io/badge/MariaDB-10.11-003545?logo=mariadb&logoColor=white)
+![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
 
 A small CMS for zachschneider.com, built to replace WordPress without changing a single public URL.
 
@@ -75,3 +76,9 @@ admin-ui/                Vue 3 admin (Vite) -> public/admin-app/
 public/theme/            theme CSS/JS/images and blocks.css (core block styles)
 docker/                  local stack mirroring the Rocky 10 droplet
 ```
+
+## License
+
+Copyright © Zach Schneider. zkm-cms is free software under the GNU General Public License v3.0 or later; see [LICENSE](LICENSE).
+
+The theme in `public/theme/` comes from [zkm-wp-theme](https://github.com/zkm/zkm-wp-theme), also GPL-3.0-or-later. CodeIgniter (MIT), Vue (MIT) and the other dependencies keep their own licenses.
