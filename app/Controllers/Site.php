@@ -94,6 +94,12 @@ class Site extends BaseController
                 return $this->notFound();
             }
 
+            // A category or tag whose posts are all archived (private, draft or deleted)
+            // is gone, like the posts: 410 rather than an empty page with a 200.
+            if (model(PostModel::class)->publishedPosts((int) $term['id'])->countAllResults() === 0) {
+                return $this->notFound()->setStatusCode(410);
+            }
+
             return $this->canonical($raw, $this->links->termUrl($term), $pageNumber)
                 ?? $this->cached($path, fn () => $this->listView($term, $pageNumber, $this->links->termUrl($term)));
         }

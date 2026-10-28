@@ -7,8 +7,9 @@
 #
 # The first form reads wp-sitemap.xml from the old site and tests each path on the
 # new one. --save writes the paths to a file instead, so they can be checked after
-# cutover, when the old sitemap is gone. Redirects are followed. Prints each path
-# that doesn't end in a 200 and exits 1 if there were any.
+# cutover, when the old sitemap is gone. Redirects are followed. A 410 counts as
+# removed on purpose (archived posts, empty archives) and is listed but not a failure.
+# Prints each path that ends in anything else but a 200, and exits 1 if there were any.
 
 sitemap_paths() {
   local site=$1 sitemap url
@@ -37,15 +38,19 @@ fi
 
 failed=0
 count=0
+gone=0
 
 for path in $paths; do
   count=$((count + 1))
   code=$(curl -sL -o /dev/null -w '%{http_code}' "$new$path")
-  if [ "$code" != 200 ]; then
+  if [ "$code" = 410 ]; then
+    echo "gone (410) $path"
+    gone=$((gone + 1))
+  elif [ "$code" != 200 ]; then
     echo "$code $path"
     failed=1
   fi
 done
 
-[ "$failed" = 0 ] && echo "All $count paths work on $new"
+[ "$failed" = 0 ] && echo "All $count paths are fine on $new: $((count - gone)) work, $gone removed on purpose (410)"
 exit "$failed"
