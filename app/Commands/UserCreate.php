@@ -42,7 +42,10 @@ class UserCreate extends BaseCommand
             CLI::write("Password updated for {$email}.", 'green');
         } else {
             $users->insert(['email' => $email, 'name' => $name ?? strstr($email, '@', true), 'password_hash' => $hash]);
-            CLI::write("Created {$email}. Turn on two-factor sign-in with: php spark user:totp {$email}", 'green');
+            CLI::write("Created {$email}.", 'green');
+            CLI::write(config('Admin')->requireTotp
+                ? "Two-factor sign-in is required here. Set it up before signing in: php spark user:totp {$email}"
+                : "Turn on two-factor sign-in with: php spark user:totp {$email}");
         }
 
         return EXIT_SUCCESS;

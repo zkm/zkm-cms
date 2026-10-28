@@ -15,7 +15,11 @@ class Auth extends BaseController
         }
 
         return $this->response->setHeader('Cache-Control', 'no-store')
-            ->setBody(view('admin/login', ['error' => session('login_error'), 'email' => old('email')]));
+            ->setBody(view('admin/login', [
+                'error'       => session('login_error'),
+                'email'       => old('email'),
+                'requireTotp' => config('Admin')->requireTotp,
+            ]));
     }
 
     public function attempt()
@@ -34,6 +38,12 @@ class Auth extends BaseController
         $ok    = $user !== null && password_verify((string) $this->request->getPost('password'), $user['password_hash']);
 
         if ($ok && $user['totp_secret'] && ! Totp::verify($user['totp_secret'], (string) $this->request->getPost('code'))) {
+            $ok = false;
+        }
+
+        // Same message as a wrong password, so this doesn't confirm the password was right.
+        if ($ok && ! $user['totp_secret'] && config('Admin')->requireTotp) {
+            log_message('warning', "Admin sign-in refused for {$ip}: two-factor is required and not set up for user {$user['id']}");
             $ok = false;
         }
 

@@ -1,5 +1,7 @@
 # Migration plan: WordPress → zkm-cms on zachschneider.com
 
+Server-specific values (droplet ID, admin login, staging hostname) are written as `<placeholders>`; keep the real ones in your own notes.
+
 **Approach:** run zkm-cms next to WordPress on the same Rocky 10 droplet, import straight from the live WordPress database, test on a private staging hostname, then switch the `www` vhost. WordPress stays installed and untouched, so rolling back means switching the vhost back.
 
 **Why the same droplet:** the importer reads the WordPress database and uploads folder locally, so nothing has to be copied between servers. The box is already hardened (SELinux, firewalld, fail2ban, dnf-automatic), and Apache event, PHP 8.3 FPM, MariaDB 10.11 and Valkey are what zkm-cms needs. zkm-cms uses less memory than WordPress with its plugins, which matters on 1 GB.
@@ -38,10 +40,10 @@
 
 ## Phase 2 — Stage on the droplet (visitors see no change)
 
-All commands run on `do-rocky` unless noted.
+All commands run on the droplet unless noted.
 
 1. **Snapshot first** (from your machine):
-   `doctl compute droplet-action snapshot 607345536 --snapshot-name zachschneider-pre-zkm-cms-$(date +%F) --wait`
+   `doctl compute droplet-action snapshot <droplet-id> --snapshot-name zachschneider-pre-zkm-cms-$(date +%F) --wait`
 2. **PHP extensions.** Check with `php -m | grep -Ei 'intl|mysqli|gd|redis|mbstring'` and install what's missing: `sudo dnf install php-intl php-mysqlnd php-gd php-pecl-redis php-mbstring`, then `sudo systemctl reload php-fpm`.
 3. **Code** goes in `/var/www/zkm-cms`, deployed by rsync from the deploy script. Ownership is `zkm:apache`, and only `writable/` and `public/uploads/` are writable by Apache.
 4. **SELinux:**
@@ -68,10 +70,10 @@ All commands run on `do-rocky` unless noted.
    ```
 7. **Import from the live site.** Uncomment the `database.wordpress.*` lines and run:
    `sudo -u apache php spark wp:import --uploads /var/www/html/wp-content/uploads`
-8. **Admin user:** `php spark user:create me@zachschneider.com "Zach"`, then `php spark user:totp me@zachschneider.com`.
-9. **Staging vhost** at `new.zachschneider.com`, with DocumentRoot `/var/www/zkm-cms/public`, `AllowOverride All`, and the same Cloudflare Origin CA cert, which covers `*.zachschneider.com` if it was issued that way (check). Add a proxied DNS record in Cloudflare and keep it private with a **Cloudflare Access** policy that allows only your email. `sudo apachectl configtest && sudo systemctl reload httpd`.
+8. **Admin user:** `php spark user:create <admin-email> "<name>"`, then `php spark user:totp <admin-email>`. In production, sign-in is refused until two-factor is set up.
+9. **Staging vhost** at `<staging-host>` (a subdomain of zachschneider.com), with DocumentRoot `/var/www/zkm-cms/public`, `AllowOverride All`, and the same Cloudflare Origin CA cert, which covers `*.zachschneider.com` if it was issued that way (check). Add a proxied DNS record in Cloudflare and keep it private with a **Cloudflare Access** policy that allows only your email. `sudo apachectl configtest && sudo systemctl reload httpd`.
 10. **Test on staging:**
-    - `scripts/check-urls.sh https://www.zachschneider.com https://new.zachschneider.com`. Access blocks curl unless you pass a service token, so the alternative is to run it on the droplet against `http://127.0.0.1` with a `Host:` header.
+    - `scripts/check-urls.sh https://www.zachschneider.com https://<staging-host>`. Access blocks curl unless you pass a service token, so the alternative is to run it on the droplet against `http://127.0.0.1` with a `Host:` header.
     - Send a contact form message and confirm it reaches the Proton inbox.
     - Edit a post in the admin and check that the public page updates (the cache is flushed on save).
     - Sign in with TOTP and confirm that five wrong passwords trigger the throttle.
@@ -108,7 +110,7 @@ The importer never writes to WordPress, so WordPress comes back exactly as it wa
 
 1. Dump the WordPress database and tar `/var/www/html` into an off-box backup. Then remove the WordPress vhost, the files, the `wordpress` database and the `zkm_wp_ro` user.
 2. Remove the WordPress-only pieces: the wp-cron timer and its PHP settings. Swap the WordPress fail2ban jails (`wp-login`, `xmlrpc`) for the zkm-cms jail. Disconnect Site Kit, BlogVault and similar services on their side.
-3. Delete the `new.zachschneider.com` DNS record and its Access policy, or keep it as a permanent staging site.
+3. Delete the `<staging-host>` DNS record and its Access policy, or keep it as a permanent staging site.
 4. Take a new snapshot and drop the pre-cutover one once you're comfortable.
 
 ## Things that intentionally change
