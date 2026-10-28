@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Libraries\SecretBox;
 use App\Libraries\Totp;
 use App\Models\UserModel;
 use CodeIgniter\CLI\BaseCommand;
@@ -27,7 +28,7 @@ class UserTotp extends BaseCommand
         }
 
         if (CLI::getOption('disable')) {
-            $users->update($user['id'], ['totp_secret' => null]);
+            $users->update($user['id'], ['totp_secret' => null, 'totp_last_step' => null]);
             CLI::write('Two-factor sign-in is off.', 'yellow');
 
             return EXIT_SUCCESS;
@@ -46,7 +47,7 @@ class UserTotp extends BaseCommand
             return EXIT_ERROR;
         }
 
-        $users->update($user['id'], ['totp_secret' => $secret]);
+        $users->update($user['id'], ['totp_secret' => SecretBox::seal($secret), 'totp_last_step' => Totp::matchStep($secret, $code)]);
         CLI::write('Two-factor sign-in is on.', 'green');
 
         return EXIT_SUCCESS;

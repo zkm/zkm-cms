@@ -16,6 +16,8 @@ services:
       - "${APP_PORT:-8090}:80"
     environment:
       CI_ENVIRONMENT: development
+      # A throwaway key for local development only. Production generates its own (spark key:generate).
+      encryption_key: "hex2bin:b159b07bd51fb5536200b847405d5f4bb9f34871929f443dfd1c2d038b0d9e3f"
       app_baseURL: "http://localhost:${APP_PORT:-8090}/"
       database_default_hostname: db
       database_default_database: zkm

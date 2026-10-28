@@ -51,6 +51,9 @@ jobs:
 
       - run: composer install --no-interaction --no-progress --prefer-dist
 
+      - name: Known vulnerabilities in PHP dependencies
+        run: composer audit --no-interaction
+
       # The starter config asks for a coverage report; CI has no coverage driver, so skip it.
       - run: vendor/bin/phpunit --colors=always --no-coverage
 
@@ -71,4 +74,39 @@ jobs:
 
       - run: npm ci
 
+      - name: Known vulnerabilities in npm dependencies
+        run: npm audit --audit-level=high
+
       - run: npm run build
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, mysqli, gd, mbstring
+          coverage: none
+
+      - run: composer install --no-interaction --no-progress --prefer-dist --no-dev
+
+      # The real stack (Apache + .htaccess rules, MariaDB, Valkey), as the runner's user
+      # so Apache can write to writable/ in the checkout.
+      - name: Start the Docker stack
+        run: |
+          export UID
+          export GID="$(id -g)"
+          docker compose up -d --build --quiet-pull
+          for i in $(seq 60); do curl -fsS -o /dev/null http://localhost:8090/robots.txt && break; sleep 2; done
+          docker compose exec -T app php spark migrate --no-interaction
+          printf 'ci-check-password-1234\n' | docker compose exec -T app php spark user:create ci@example.test CI --password-stdin
+
+      - name: HTTP security checks
+        run: python3 scripts/security-check.py http://localhost:8090 --uploads-dir public/uploads --email ci@example.test --password ci-check-password-1234
+
+      - name: Stack logs
+        if: failure()
+        run: docker compose logs app db

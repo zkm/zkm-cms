@@ -32,21 +32,32 @@ class Totp
      */
     public static function verify(string $secret, string $code, ?int $time = null): bool
     {
+        return self::matchStep($secret, $code, $time) !== null;
+    }
+
+    /**
+     * The time step the code belongs to, or null if it doesn't match. Callers store
+     * the step and refuse it (and earlier ones) next time, so a code works only once.
+     */
+    public static function matchStep(string $secret, string $code, ?int $time = null): ?int
+    {
         $code = preg_replace('/\D/', '', $code) ?? '';
 
         if (strlen($code) !== 6) {
-            return false;
+            return null;
         }
 
-        $step = intdiv($time ?? time(), 30);
+        $step  = intdiv($time ?? time(), 30);
+        $found = null;
 
+        // Check all three without stopping early, so timing doesn't hint at which matched.
         foreach ([-1, 0, 1] as $offset) {
             if (hash_equals(self::code($secret, $step + $offset), $code)) {
-                return true;
+                $found = $step + $offset;
             }
         }
 
-        return false;
+        return $found;
     }
 
     public static function code(string $secret, int $step): string

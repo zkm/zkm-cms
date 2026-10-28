@@ -4,6 +4,14 @@
 </IfModule>
 RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
 RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
-<FilesMatch "\.(php\d?|phtml|phar)$">
+<FilesMatch "\.(php\d?|phtml|phar|html?|shtml|xhtml|htaccess)$">
     Require all denied
 </FilesMatch>
+
+<IfModule mod_headers.c>
+    # An uploaded SVG (or anything a browser might render) can't run script or
+    # reach the rest of the site: it opens in a sandbox with no script permission.
+    Header always set Content-Security-Policy "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'; sandbox"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Cross-Origin-Resource-Policy "same-site"
+</IfModule>

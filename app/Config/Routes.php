@@ -58,6 +58,7 @@ $routes->get('feed', 'Site::feed');
 $routes->get('sitemap.xml', 'Site::sitemap');
 $routes->addRedirect('wp-sitemap.xml', '/sitemap.xml', 301);
 $routes->get('robots.txt', 'Site::robots');
+$routes->get('favicon.ico', 'Site::favicon');
 $routes->post('contact-form', 'Site::contact');
 
 // Everything else: posts, pages, archives, redirects.

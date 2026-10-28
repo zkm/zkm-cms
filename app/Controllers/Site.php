@@ -189,6 +189,16 @@ class Site extends BaseController
         return $this->response->setContentType('application/xml', 'UTF-8')->setBody($xml);
     }
 
+    /**
+     * Browsers ask for /favicon.ico on their own; send them to the site icon.
+     */
+    public function favicon(): ResponseInterface
+    {
+        $icons = $this->siteIcons($this->settings->value('site_icon_id'));
+
+        return $icons !== [] ? redirect()->to($icons['32'], 301) : $this->response->setStatusCode(404);
+    }
+
     public function robots(): ResponseInterface
     {
         $body = "User-agent: *\nDisallow: /admin/\n\nSitemap: " . $this->absolute('/sitemap.xml') . "\n";
@@ -201,8 +211,7 @@ class Site extends BaseController
      */
     public function contact(): ResponseInterface
     {
-        $back = (string) ($this->request->getPost('return') ?: '/contact/');
-        $back = str_starts_with($back, '/') && ! str_starts_with($back, '//') ? $back : '/contact/';
+        $back = self::localPath((string) $this->request->getPost('return'), '/contact/');
 
         // Bots fill in the hidden field.
         if ((string) $this->request->getPost('website') !== '') {
@@ -226,7 +235,7 @@ class Site extends BaseController
         }
 
         $data = [
-            'name'       => trim((string) $this->request->getPost('name')),
+            'name'       => self::oneLine((string) $this->request->getPost('name')),
             'email'      => trim((string) $this->request->getPost('email')),
             'message'    => trim((string) $this->request->getPost('message')),
             'ip'         => $this->request->getIPAddress(),
@@ -249,6 +258,23 @@ class Site extends BaseController
         }
 
         return $this->redirectTo($back . '?sent=1#contact-form', 303);
+    }
+
+    /**
+     * A path on this site, or $default. Rejects anything a browser could read as
+     * another host: //host, /\\host, schemes, and control characters.
+     */
+    public static function localPath(string $path, string $default): string
+    {
+        return preg_match('#^/(?![/\\\\])[^\\x00-\\x1f\\x7f]*$#', $path) === 1 ? $path : $default;
+    }
+
+    /**
+     * Text safe for an email header: no line breaks or other control characters.
+     */
+    public static function oneLine(string $text): string
+    {
+        return trim(preg_replace('/[\\x00-\\x1f\\x7f]+/u', ' ', $text) ?? '');
     }
 
     public function notFound(): ResponseInterface
