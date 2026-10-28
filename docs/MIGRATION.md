@@ -23,8 +23,8 @@ Server-specific values (droplet ID, admin login, staging hostname) are written a
 | --- | --- | --- |
 | 1 | **Fresh content.** Import from the live database (Phase 2 does this) so Skywatch and the latest About-page edit come over. | covered by the plan |
 | 2 | **Deploy script.** Build locally (`composer install --no-dev`, `npm run build`), then rsync to the server without `writable/`, `public/uploads/` or `.env`. | small |
-| 3 | **Encrypt the TOTP secret at rest** with `encryption.key`. It's stored in plain text today. | small |
-| 4 | **fail2ban jail** for `Admin sign-in failed for <ip>` in `writable/logs/log-*.log`. | small |
+| 3 | **Lock the origin to Cloudflare.** Allow ports 80 and 443 on the droplet only from Cloudflare's ranges (DigitalOcean firewall), so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | small |
+| 4 | **fail2ban jail with the Cloudflare action** (see *Security* below). A firewall ban on the droplet does nothing, because visitors reach it through Cloudflare's addresses. | small |
 | 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. Optional. | optional |
 | 6 | Review the 155 private and 47 draft posts. Old classic-editor posts get automatic paragraphs and may need touch-ups. Some 2008–09 posts embed Flash, which no browser plays now. | your call |
 | 7 | The one past Fluent Forms submission isn't migrated. Export it from WP admin if you want it. | trivial |
@@ -78,6 +78,7 @@ All commands run on the droplet unless noted.
     - Edit a post in the admin and check that the public page updates (the cache is flushed on save).
     - Sign in with TOTP and confirm that five wrong passwords trigger the throttle.
     - Run Lighthouse on home and a post.
+    - `scripts/security-check.py https://<staging-host>` from a machine Access lets through (no `--uploads-dir` on a real server).
 
 ## Phase 3 — Cutover (about 15 minutes, at a quiet hour)
 
@@ -94,7 +95,8 @@ All commands run on the droplet unless noted.
    - `curl -I https://www.zachschneider.com/wp-login.php` should return 410.
    - `curl -I https://www.zachschneider.com/wp-content/uploads/2026/10/zach-portrait.webp` should 301 to `/uploads/…`.
    - Check that the feed works in a reader and that the sitemap URL is right. In Search Console, submit `/sitemap.xml` in place of `/wp-sitemap.xml`.
-   - Check that the share card renders (paste a post URL into Mastodon) and that Tag Manager fires (the GTM preview).
+   - Check that the share card renders (paste a post URL into Mastodon), and that Analytics and Tag Manager fire (GA4 Realtime, the GTM preview). The Content-Security-Policy allows Google's tag scripts; a Custom HTML tag in the GTM container that loads scripts from other domains would be blocked, so check the browser console.
+   - `scripts/security-check.py https://www.zachschneider.com`: every check should pass.
 8. **Stop WordPress background jobs:** `sudo systemctl disable --now wp-cron.timer`. Use the timer's real name on the box. Leave the WordPress files and database where they are.
 9. **Watch it for a day:** `/var/log/httpd/*error_log`, `writable/logs/`, and `fail2ban-client status`.
 
@@ -112,6 +114,56 @@ The importer never writes to WordPress, so WordPress comes back exactly as it wa
 2. Remove the WordPress-only pieces: the wp-cron timer and its PHP settings. Swap the WordPress fail2ban jails (`wp-login`, `xmlrpc`) for the zkm-cms jail. Disconnect Site Kit, BlogVault and similar services on their side.
 3. Delete the `<staging-host>` DNS record and its Access policy, or keep it as a permanent staging site.
 4. Take a new snapshot and drop the pre-cutover one once you're comfortable.
+
+## Security
+
+Done in the code (tests in `tests/`, HTTP checks in `scripts/security-check.py`, both in CI):
+
+- **Sign-in:**
+  - Password plus a required authenticator code in production. Each code works only once, and the secret is encrypted with `encryption.key`.
+  - Limits of 5 tries a minute per address and 10 per 15 minutes per account.
+  - The same work for unknown emails, so timing doesn't show which accounts exist.
+  - A new session ID and CSRF token after sign-in.
+- **Admin:**
+  - CSRF on every write; API responses answer 401 when signed out.
+  - A strict Content-Security-Policy (`script-src 'self'`) and no framing.
+  - The editor preview is a sandboxed iframe, so scripts in a post body can't run with admin rights.
+- **Public site:**
+  - A Content-Security-Policy with `object-src 'none'`, and inline scripts allowed only in `<head>` (by hash).
+  - No session cookies; HSTS in production; visitors' real IPs read from Cloudflare.
+- **Uploads:**
+  - Only listed file types, with the extension checked against the content.
+  - Images over 40 megapixels refused.
+  - Nothing under `/uploads/` runs as PHP or is served as HTML, and files are sent with a `sandbox` CSP, so an uploaded SVG can't run script.
+- **Other:**
+  - The contact form's return path must be on the site, and names are stripped of line breaks before going into email headers.
+  - WordPress endpoints return 410.
+  - `composer audit` and `npm audit` run in CI, and Dependabot opens update PRs.
+
+On the server:
+
+1. `.env` needs `encryption.key` from `php spark key:generate` **before** `php spark user:totp`. Back up the key: without it, the stored authenticator secrets can't be read, and you'd have to run `user:totp` again.
+2. fail2ban, banning at Cloudflare. Create an API token with *Account Filter Lists: Edit* or *Zone Firewall: Edit*, then add:
+
+   `/etc/fail2ban/filter.d/zkm-cms.conf`
+   ```ini
+   [Definition]
+   failregex = ^WARNING - \S+ \S+ --> Admin sign-in (?:failed|throttled|refused) for <HOST>
+   datepattern = ^WARNING - %%Y-%%m-%%d %%H:%%M:%%S
+   ```
+   `/etc/fail2ban/jail.d/zkm-cms.local`
+   ```ini
+   [zkm-cms]
+   enabled  = true
+   filter   = zkm-cms
+   logpath  = /var/www/zkm-cms/writable/logs/log-*.log
+   maxretry = 5
+   findtime = 600
+   bantime  = 86400
+   action   = cloudflare-token[cfzone="zachschneider.com", cftoken="<token>"]
+   ```
+   Test the filter with `fail2ban-regex /var/www/zkm-cms/writable/logs/log-$(date +%F).log /etc/fail2ban/filter.d/zkm-cms.conf`.
+3. Cloudflare: turn on *Always Use HTTPS*. Consider a WAF rule or rate limit for `/admin/*` and `/contact-form`, or put `/admin` behind Cloudflare Access too.
 
 ## Things that intentionally change
 

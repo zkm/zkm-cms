@@ -8,7 +8,7 @@ class UserModel extends Model
 {
     protected $table         = 'users';
     protected $returnType    = 'array';
-    protected $allowedFields = ['email', 'name', 'password_hash', 'totp_secret', 'last_login_at'];
+    protected $allowedFields = ['email', 'name', 'password_hash', 'totp_secret', 'totp_last_step', 'last_login_at'];
 
     protected $useTimestamps = true;
 }

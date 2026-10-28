@@ -10,6 +10,10 @@ class Media extends ApiController
 {
     private const IMAGE_SIZES = ['medium' => 300, 'large' => 1024];
 
+    // Resizing decodes the whole image into memory (about 4 bytes a pixel), so refuse
+    // anything bigger than a large phone photo before GD tries.
+    public const MAX_PIXELS = 40_000_000;
+
     public function index()
     {
         $search  = trim((string) $this->request->getGet('q'));
@@ -45,6 +49,12 @@ class Media extends ApiController
 
         if (! in_array($ext, $allowed, true) || ! in_array(strtolower($file->getClientExtension()), $allowed, true)) {
             return $this->error('That kind of file is not allowed (' . implode(', ', $allowed) . ').');
+        }
+
+        $dims = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) ? @getimagesize($file->getTempName()) : false;
+
+        if ($dims !== false && $dims[0] * $dims[1] > self::MAX_PIXELS) {
+            return $this->error(sprintf('That image is %d×%d. Resize it below %d megapixels first.', $dims[0], $dims[1], self::MAX_PIXELS / 1_000_000));
         }
 
         $dir  = date('Y/m');

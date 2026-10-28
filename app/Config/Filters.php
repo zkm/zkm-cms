@@ -35,6 +35,7 @@ class Filters extends BaseFilters
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
         'adminauth'     => \App\Filters\AdminAuth::class,
+        'zkmheaders'    => \App\Filters\SecurityHeaders::class,
     ];
 
     /**
@@ -58,7 +59,8 @@ class Filters extends BaseFilters
         'after' => [
             'pagecache',   // Web Page Caching
             'performance', // Performance Metrics
-            'toolbar',     // Debug Toolbar
+            // No debug toolbar: it injects inline scripts the Content-Security-Policy blocks,
+            // and development should run with the same headers as production.
         ],
     ];
 
@@ -78,8 +80,7 @@ class Filters extends BaseFilters
             // 'invalidchars',
         ],
         'after' => [
-            // 'honeypot',
-            // 'secureheaders',
+            'zkmheaders',
         ],
     ];
 

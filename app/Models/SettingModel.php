@@ -17,6 +17,7 @@ class SettingModel extends Model
         'posts_per_page' => '10',
         'contact_email'  => 'me@zachschneider.com',
         'gtm_id'         => '',
+        'google_tag_id'  => '',
         'twitter'        => '@zkm',
         'fediverse'      => '@zachschneider@mastodon.social',
         'footer_note'    => 'Built on CodeIgniter',

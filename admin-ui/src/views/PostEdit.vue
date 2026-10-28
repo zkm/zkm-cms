@@ -264,7 +264,7 @@ watch(showPreview, refreshPreview)
 
         <div class="body-panes" :class="{ split: showPreview }">
           <textarea ref="bodyField" v-model="post.body" class="body-input" spellcheck="true" :placeholder="post.format === 'markdown' ? 'Write in Markdown…' : 'HTML…'"></textarea>
-          <iframe v-if="showPreview" class="preview" title="Preview" :srcdoc="previewDoc"></iframe>
+          <iframe v-if="showPreview" class="preview" title="Preview" sandbox :srcdoc="previewDoc"></iframe>
         </div>
         <p v-if="post.format === 'html'" class="muted small">This post was imported from WordPress as HTML. Switching to Markdown doesn't convert it. Raw HTML also works inside Markdown.</p>
       </section>

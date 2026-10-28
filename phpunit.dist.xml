@@ -44,9 +44,10 @@
 
     <php>
         <server name="app.baseURL" value="http://example.com/"/>
-        <!-- Keep tests away from the dev Valkey cache and the dev database. -->
-        <env name="cache_handler" value="dummy" force="true"/>
+        <!-- The tests use the zkm_tests database. (CIUnitTestCase swaps the cache for an in-memory mock.) -->
         <env name="database_tests_hostname" value="db"/>
+        <!-- A throwaway key, used only by the tests. -->
+        <env name="encryption_key" value="hex2bin:d09843aa1c98e7e765811a092692dd91b40cee45db788c9fcb6b08f12b774be7" force="true"/>
         <server name="CODEIGNITER_SCREAM_DEPRECATIONS" value="0"/>
         <!-- Directory containing phpunit.xml -->
         <const name="HOMEPATH" value="./"/>

@@ -59,10 +59,15 @@ Then open http://localhost:8090 for the site and http://localhost:8090/admin/ fo
 
 ```bash
 docker compose exec app vendor/bin/phpunit --no-coverage
+scripts/security-check.py http://localhost:8090 --uploads-dir public/uploads --email you@example.com --password '…'
 scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090
 ```
 
-The PHPUnit suite uses the `zkm_tests` database. `check-urls.sh` reads every URL from the live WordPress sitemap and checks that each one still works on the new site.
+- **PHPUnit** uses the `zkm_tests` database. Besides the content and routing tests, it includes security tests: every API route refusing signed-out requests, CSRF, code replay, rate limits, response headers, and the input sanitisers.
+- **`security-check.py`** tests what only the web server shows: private files aren't served, nothing under `/uploads/` runs, and the real response headers. `--uploads-dir` plants probe files, so use it only on a local or CI copy.
+- **`check-urls.sh`** reads every URL from the live WordPress sitemap and checks that each one still works on the new site.
+
+CI runs PHPUnit and `security-check.py` against the Docker stack, plus `composer audit` and `npm audit`, on every pull request. See *Security* in [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Layout
 

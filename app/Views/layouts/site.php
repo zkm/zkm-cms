@@ -62,6 +62,10 @@ $meta = [
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&amp;family=Rajdhani:wght@400;500;600;700&amp;display=swap">
     <link rel="stylesheet" href="<?= $themeVersion('blocks.css') ?>">
     <link rel="stylesheet" href="<?= $themeVersion('style.css') ?>">
+<?php if ($site['google_tag_id'] !== '' && ENVIRONMENT === 'production'): ?>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=<?= esc(rawurlencode($site['google_tag_id']), 'attr') ?>"></script>
+    <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','<?= esc($site['google_tag_id'], 'js') ?>');</script>
+<?php endif ?>
 <?php if ($site['gtm_id'] !== '' && ENVIRONMENT === 'production'): ?>
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','<?= esc($site['gtm_id'], 'js') ?>');</script>
 <?php endif ?>

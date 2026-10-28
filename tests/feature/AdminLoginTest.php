@@ -26,6 +26,9 @@ final class AdminLoginTest extends CIUnitTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Each test gets a new mock cache, but the shared throttler keeps the first one it saw,
+        // so rate limits would carry over from earlier tests. Start with a fresh throttler.
+        \Config\Services::resetSingle('throttler');
         // CSRF is covered by the framework; these tests are about the sign-in rules.
         config('Filters')->filters = [];
     }

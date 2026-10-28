@@ -319,6 +319,13 @@ class Importer
 
         $settings->put('site_icon_id', (string) ($this->mediaIds[(int) $this->option('site_icon')] ?? ''));
 
+        // The Google tag (Analytics) Site Kit placed, if it was set up.
+        $analytics = $this->unserialize($this->option('googlesitekit_analytics-4_settings') ?? '');
+
+        if (! empty($analytics['useSnippet']) && ! empty($analytics['googleTagID'] ?? $analytics['measurementID'] ?? '')) {
+            $settings->put('google_tag_id', $analytics['googleTagID'] ?: $analytics['measurementID']);
+        }
+
         // Google Tag Manager container from Site Kit, if it was set up.
         $tagManager = $this->unserialize($this->option('googlesitekit_tagmanager_settings') ?? '');
 
