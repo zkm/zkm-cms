@@ -198,6 +198,14 @@ class Site extends BaseController
     }
 
     /**
+     * WordPress's sitemap address, still remembered by search engines.
+     */
+    public function oldSitemap(): ResponseInterface
+    {
+        return $this->redirectTo('/sitemap.xml');
+    }
+
+    /**
      * Browsers ask for /favicon.ico on their own; send them to the site icon.
      */
     public function favicon(): ResponseInterface
