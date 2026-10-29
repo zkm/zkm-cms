@@ -165,11 +165,15 @@ def main():
     check('zkm_session' not in (headers.get('Set-Cookie') or ''), 'public pages set no session cookie')
     check(not headers.get('X-Powered-By'), 'no X-Powered-By', headers.get('X-Powered-By', ''))
 
-    status, headers, body = site.request('GET', '/admin/login')
-    csp = headers.get('Content-Security-Policy', '')
-    check("script-src 'self';" in csp and "frame-ancestors 'none'" in csp, 'admin CSP', csp)
-    check(headers.get('X-Frame-Options') == 'DENY', 'admin cannot be framed')
-    check('no-store' in headers.get('Cache-Control', ''), 'sign-in page is not cached')
+    if args.expect_admin_gated:
+        # This machine gets the site's 404 page for /admin/login, not the sign-in page.
+        print('  (admin headers not checked: the sign-in page is hidden from this machine)')
+    else:
+        status, headers, body = site.request('GET', '/admin/login')
+        csp = headers.get('Content-Security-Policy', '')
+        check("script-src 'self';" in csp and "frame-ancestors 'none'" in csp, 'admin CSP', csp)
+        check(headers.get('X-Frame-Options') == 'DENY', 'admin cannot be framed')
+        check('no-store' in headers.get('Cache-Control', ''), 'sign-in page is not cached')
 
     if args.expect_admin_gated:
         print('Admin gate')
