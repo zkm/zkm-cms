@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call: # from deploy.yml, so every release is tested
 
 permissions:
   contents: read
