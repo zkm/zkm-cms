@@ -1,121 +1,128 @@
 # Migration plan: WordPress → zkm-cms on zachschneider.com
 
-Server-specific values (droplet ID, admin login, staging hostname) are written as `<placeholders>`; keep the real ones in your own notes.
+Server-specific values (droplet IDs and addresses, the reserved IP, the staging hostname, Access IDs, the admin login) are written as `<placeholders>`; keep the real ones in your own notes.
 
-**Approach:** run zkm-cms next to WordPress on the same Rocky 10 droplet, import straight from the live WordPress database, test on a private staging hostname, then switch the `www` vhost. WordPress stays installed and untouched, so rolling back means switching the vhost back.
+**Approach:** run zkm-cms on a new droplet cloned from a snapshot of the WordPress droplet, so it starts with the same hardening (SELinux, firewalld, fail2ban, dnf-automatic) and the same Apache event, PHP 8.3 FPM, MariaDB 10.11 and Valkey. Test it on a private staging hostname behind Cloudflare Access, then move the site's reserved IP from the old droplet to the new one. DNS doesn't change: the apex A record points at the reserved IP and `www` is a CNAME to the apex. WordPress stays untouched on the old droplet, so rolling back means moving the IP back.
 
-**Why the same droplet:** the importer reads the WordPress database and uploads folder locally, so nothing has to be copied between servers. The box is already hardened (SELinux, firewalld, fail2ban, dnf-automatic), and Apache event, PHP 8.3 FPM, MariaDB 10.11 and Valkey are what zkm-cms needs. zkm-cms uses less memory than WordPress with its plugins, which matters on 1 GB.
-*Alternative:* a fresh $6 droplet with a reserved-IP swap, like the Oct 8 move. That gives a cleaner rollback, but means a second box to harden and copying ~265 MB of uploads across.
+*Why not the same droplet* (the first plan): running both side by side would have let the importer read WordPress locally, but on 1 GB the two stacks compete for memory, and rolling back would mean editing vhosts under pressure instead of moving an IP.
+
+**Content comes from the local copy, not from the server.** The import ran locally against a WordPress backup, and the review happened there: posts made private, their archives answering 410, and clean-up edits. That database and the uploads were copied to the new droplet. Don't run `wp:import` on the server; it would bring back what the review changed.
 
 ---
 
-## Where things stand (local build, Oct 28)
+## Where things stand
 
-- The site renders with the zkm-wp-theme design. Home, blog, posts, pages, archives, the contact form, the feed, the sitemap and robots.txt all work.
-- 43 of the 51 live sitemap URLs work locally (`/author/admin/` now redirects to `/blog/`). The other 8 are the **Skywatch post and its tags**, which were published after the Oct 8 backup. A fresh import closes the gap (Phase 1).
-- The import brought over 222 posts and pages, 209 media items with all their sizes, 219 categories and tags, 54 comments (archived), both menus, the settings, the Tag Manager ID and the site icon. Re-running the import is idempotent.
-- The admin has sign-in (password plus optional TOTP, throttled), editing, a live preview, revisions, media upload, menus, redirects, messages and settings.
-- 21 PHPUnit tests pass, covering the converter, TOTP, the .wpress reader and permalink routing.
+- **Local (Oct 28):** the site renders with the zkm-wp-theme design; the admin has sign-in with two-factor, editing, preview, revisions, media, menus, redirects, messages and settings. PHPUnit, the security checks and the admin smoke test run in CI.
+- **Staging (Oct 29):** deployed on the new droplet behind Cloudflare Access. Every URL in the live sitemap resolves (the archived posts and their empty archives answer 410 on purpose), `security-check.py` passes, the contact form sends mail, and nightly backups run.
 
 ### Open items before cutover
 
-| # | Item | Size |
+| # | Item | Status |
 | --- | --- | --- |
-| 1 | **Fresh content.** Import from the live database (Phase 2 does this) so Skywatch and the latest About-page edit come over. | covered by the plan |
-| 2 | **Deploy script.** Done: `scripts/deploy.sh <user@host>` builds HEAD locally (`composer install --no-dev`, `npm run build`) and shows what rsync would change; `--go` deploys, without touching `writable/`, `public/uploads/` or `.env`, then runs migrations and clears the cache. | done |
-| 3 | **Lock the origin to Cloudflare.** Allow ports 80 and 443 on the droplet only from Cloudflare's ranges (DigitalOcean firewall), so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | small |
+| 1 | **Fresh content.** Reviewed and edited locally, then copied to the server (see *Approach*). | done |
+| 2 | **Deploy script.** `scripts/deploy.sh <user@host>` builds HEAD locally (`composer install --no-dev`, `npm run build`) and shows what rsync would change; `--go` deploys, without touching `writable/`, `public/uploads/` or `.env`, then runs migrations and clears the cache. | done |
+| 3 | **Lock the origin to Cloudflare.** The new droplet's DigitalOcean firewall allows ports 80 and 443 only from Cloudflare's ranges, so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | done |
 | 4 | **fail2ban jail with the Cloudflare action.** Dropped: behind Cloudflare Access it could only ban the site owner (see *Security → Server setup*). | dropped |
-| 4a | **Admin access gate:** Cloudflare Access in front of `/admin`, plus the AUD check in `.env` (see *Security → Admin access*). Do this before the first sign-in on staging. | small |
-| 4b | **Backups:** nightly database dump and off-box copy of uploads; droplet backups on (see *Security → Backups*). | small |
-| 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. Optional. | optional |
-| 6 | Review the 155 private and 47 draft posts. Old classic-editor posts get automatic paragraphs and may need touch-ups. Some 2008–09 posts embed Flash, which no browser plays now. | your call |
+| 4a | **Admin access gate:** Cloudflare Access plus the AUD check in `.env` (see *Security → Admin access*). On staging now; `www` gets it in Phase 3. | done for staging |
+| 4b | **Backups:** nightly database dump, off-box copy of the dumps and uploads, droplet backups on (see *Security → Backups*). | done |
+| 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. | optional |
+| 6 | Review the private and draft posts. Old classic-editor posts get automatic paragraphs and may need touch-ups. Some 2008–09 posts embed Flash, which no browser plays now. | your call |
 | 7 | The one past Fluent Forms submission isn't migrated. Export it from WP admin if you want it. | trivial |
 
 ---
 
-## Phase 1 — Finish locally
+## Phase 1 — Finish locally (done)
 
-1. Work through open items 2–4.
-2. Take a fresh All-in-One export, then run `wp:load` and `wp:import`, so local review uses current content.
-3. Run `scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090`. It should report that all paths work.
-4. Click through the published posts and pages next to the live site in light and dark mode, and on a phone.
+1. Take a fresh All-in-One export, then run `wp:load` and `wp:import`.
+2. Review and edit the content locally.
+3. `scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090` should report that every path works or answers 410 on purpose.
 
-## Phase 2 — Stage on the droplet (visitors see no change)
+## Phase 2 — Stage on a new droplet (done; visitors see no change)
 
-All commands run on the droplet unless noted.
+Commands run on the new droplet unless noted. Gate every delete behind a check that you're on the new droplet (`[ "$(hostname)" = <new-hostname> ]`), because the clone looks exactly like the live box.
 
-1. **Snapshot first** (from your machine):
-   `doctl compute droplet-action snapshot <droplet-id> --snapshot-name zachschneider-pre-zkm-cms-$(date +%F) --wait`
-2. **PHP extensions.** Check with `php -m | grep -Ei 'intl|mysqli|gd|redis|mbstring'` and install what's missing: `sudo dnf install php-intl php-mysqlnd php-gd php-pecl-redis php-mbstring`, then `sudo systemctl reload php-fpm`.
-3. **Code** goes in `/var/www/zkm-cms`, deployed by rsync from the deploy script. Ownership is `zkm:apache`, and only `writable/` and `public/uploads/` are writable by Apache.
-4. **SELinux:**
+1. **Clone.** Snapshot the WordPress droplet, then create `<new-droplet>` from the snapshot (same size and region). Disable WordPress's timers on the clone right away.
+2. **Make the clone its own machine.** It carries the old droplet's SSH host keys and machine-id:
+   ```bash
+   sudo rm -f /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo restorecon /etc/ssh/ssh_host_*
+   sudo rm /etc/machine-id && sudo systemd-machine-id-setup
+   sudo systemctl reboot
+   ```
+   Rocky 10 has no `ssh_keys` group; the host keys are root-only (`0600`). On your machine, replace the clone's `known_hosts` entry only after the key it presents matches `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+3. **Firewall:** a DigitalOcean firewall on the new droplet allowing 80 and 443 from Cloudflare's ranges only, and 22 for SSH.
+4. **Remove WordPress from the clone:** `/var/www/html`, the `wordpress` database and user, the wp-cron units and WP-CLI. The old droplet keeps all of it for rollback.
+5. **PHP extensions.** Check with `php -m | grep -Ei 'intl|mysqli|gd|redis|mbstring|sodium'`.
+6. **Directories and SELinux.** `/var/www/zkm-cms` and `public/` are `zkm:apache` 750. `writable/` (with `cache`, `logs`, `session`, `uploads`, `debugbar`) and `public/uploads/` are owned by `apache`, and sessions go in `/var/lib/zkm-cms/sessions` (700, `apache`). Only those are writable by Apache:
    ```bash
    sudo semanage fcontext -a -t httpd_sys_rw_content_t '/var/www/zkm-cms/(writable|public/uploads)(/.*)?'
-   sudo restorecon -Rv /var/www/zkm-cms
+   sudo semanage fcontext -a -t httpd_sys_rw_content_t '/var/lib/zkm-cms(/.*)?'
+   sudo restorecon -R /var/www/zkm-cms /var/lib/zkm-cms
    ```
-   Check whether `httpd_can_network_connect` is needed for SMTP to Proton: `getsebool httpd_can_network_connect`. WP Mail SMTP already sends from this box, so it is probably on.
-5. **Database:**
+7. **Database:**
    ```sql
    CREATE DATABASE zkm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    CREATE USER 'zkm'@'localhost' IDENTIFIED BY '…';
    GRANT ALL ON zkm.* TO 'zkm'@'localhost';
-   -- Read-only access to WordPress, for the importer only
-   CREATE USER 'zkm_wp_ro'@'localhost' IDENTIFIED BY '…';
-   GRANT SELECT ON wordpress.* TO 'zkm_wp_ro'@'localhost';
    ```
-   (Look up the real WordPress database name in `wp-config.php`.)
-6. **Config:** copy `env.production.example` to `/var/www/zkm-cms/.env` (mode 640, `root:apache`). Fill in the passwords and the Proton SMTP token from WP Mail SMTP. For now, set `app.baseURL` to the staging hostname. Then:
-   ```bash
-   cd /var/www/zkm-cms
-   sudo -u apache php spark key:generate
-   sudo -u apache php spark migrate
-   ```
-7. **Import from the live site.** Uncomment the `database.wordpress.*` lines and run:
-   `sudo -u apache php spark wp:import --uploads /var/www/html/wp-content/uploads`
-8. **Admin user:** `php spark user:create <admin-email> "<name>"`, then `php spark user:totp <admin-email>`. In production, sign-in is refused until two-factor is set up.
-9. **Staging vhost** at `<staging-host>` (a subdomain of zachschneider.com), with DocumentRoot `/var/www/zkm-cms/public`, `AllowOverride All`, and the same Cloudflare Origin CA cert, which covers `*.zachschneider.com` if it was issued that way (check). Add a proxied DNS record in Cloudflare and keep it private with a **Cloudflare Access** policy that allows only your email. `sudo apachectl configtest && sudo systemctl reload httpd`.
-10. **Test on staging:**
-    - `scripts/check-urls.sh https://www.zachschneider.com https://<staging-host>`. Access blocks curl unless you pass a service token, so the alternative is to run it on the droplet against `http://127.0.0.1` with a `Host:` header.
-    - Send a contact form message and confirm it reaches the Proton inbox.
-    - Edit a post in the admin and check that the public page updates (the cache is flushed on save).
-    - Sign in with TOTP and confirm that five wrong passwords trigger the throttle.
-    - Run Lighthouse on home and a post.
-    - `scripts/security-check.py https://<staging-host>` from a machine Access lets through (no `--uploads-dir` on a real server).
+8. **Config:** `/var/www/zkm-cms/.env` from `env.production.example`, mode 640, `root:apache`. It needs a new `encryption.key` (`php spark key:generate`, or `hex2bin:` plus 32 random bytes in hex), the database password, a Proton SMTP token of its own (Proton → Settings → IMAP/SMTP → SMTP tokens), and `app.baseURL = 'https://<staging-host>/'`. Keep a copy in your password manager.
+9. **Deploy** (from your machine): `scripts/deploy.sh <user@new-droplet>` for the dry run, then `--go`. It runs the migrations.
+10. **Copy the content** (from your machine):
+    - Dump the local database (`docker compose exec -T db mariadb-dump -uzkm -pzkm --single-transaction zkm`), load it into `zkm` on the server, delete local test messages, and run `php spark cache:clear`.
+    - `rsync` `public/uploads/` to the server with `--rsync-path='sudo rsync' --chown=apache:apache`, excluding `/.htaccess` (the deploy sends that one). Dry run first.
+    - **Admin user:** the local one comes along with the database. Change its email to the private sign-in address (`user:email`), set a password (`user:create`) and set up two-factor again (`user:totp`): the server's `encryption.key` can't read the local authenticator secret.
+11. **Staging hostname and Access,** before Apache serves the site there:
+    - Cloudflare DNS: a proxied A record `<staging-host>` → the new droplet's IP.
+    - Zero Trust → Access controls → Applications → **Add an application → Self-hosted**: application name, the public hostname `<staging-host>` with **no path**, and a policy (Action **Allow**, Include → **Emails** → your address). Save the policy and attach it, then save the application; check it appears in the Applications list.
+    - Check that `curl -I https://<staging-host>/` redirects to `<team>.cloudflareaccess.com`. The redirect's `kid` parameter is the application's AUD tag.
+    - In `.env`: `admin.accessTeam = '<team>'`, `admin.accessAud = '<aud>'`, `admin.accessEmails = '<your email>'`.
+12. **Vhost.** Keep the WordPress vhost as `zachschneider.conf.wordpress` (Apache loads only `*.conf`), and point `zachschneider.com`, `www` and `<staging-host>` at `/var/www/zkm-cms/public`, with the uploads block from *Security → Defence in depth*. Without `<staging-host>` in `ServerAlias`, Apache presents its default certificate and Cloudflare answers 526. `sudo apachectl configtest && sudo systemctl reload httpd`.
+13. **Backups:** see *Security → Backups*.
+14. **Test on staging.** Access blocks plain `curl`, so:
+    - **URLs**, from the droplet, sending requests to its own Apache:
+      ```bash
+      scripts/check-urls.sh --save urls.txt https://www.zachschneider.com   # on your machine
+      ssh <new-droplet> 'h=<staging-host>; while read -r p; do echo "$(curl -sk -L --resolve $h:443:127.0.0.1 -o /dev/null -w "%{http_code}" "https://$h$p") $p"; done' < urls.txt
+      ```
+    - **Security**, through Access with a service token: Zero Trust → Service credentials → create one, then add a policy to the app with Action **Service Auth**, Include → **Service Token**. Then:
+      ```bash
+      CF_ACCESS_CLIENT_ID=… CF_ACCESS_CLIENT_SECRET=… scripts/security-check.py https://<staging-host> --expect-admin-gated
+      ```
+      (In fish, `read -s -P 'Client ID: ' -x CF_ACCESS_CLIENT_ID` keeps the values out of your history.) The app answers `/admin` with 404 even to the service token, which carries no email.
+    - **In the browser:** sign in with two-factor, edit a post and check the public page updates, and send a contact form message.
 
-## Phase 3 — Cutover (about 15 minutes, at a quiet hour)
+## Phase 3 — Cutover (about 30 minutes, at a quiet hour)
 
 1. **Freeze WordPress:** don't publish from here on.
-2. **Save the URL list** while the old sitemap still exists:
-   `scripts/check-urls.sh --save urls.txt https://www.zachschneider.com` (from your machine).
-3. **Final import**, to pick up anything since staging. It only updates rows; nothing is duplicated:
-   `sudo -u apache php spark wp:import --uploads /var/www/html/wp-content/uploads`
-4. In `.env`, set `app.baseURL = 'https://www.zachschneider.com/'` and comment out the `database.wordpress.*` lines.
-5. **Switch the vhost:** in the `www.zachschneider.com` vhost, change `DocumentRoot` and `<Directory>` from `/var/www/html` to `/var/www/zkm-cms/public`. Keep a copy of the old file as `…conf.wordpress`. Then `sudo apachectl configtest && sudo systemctl reload httpd`.
-6. **Purge Cloudflare:** Caching → Purge Everything. The WordPress Cloudflare plugin used to do this for you.
+2. **Save the URL list** while the old sitemap still exists: `scripts/check-urls.sh --save urls.txt https://www.zachschneider.com`. If anything was published or edited in WordPress since the local export, bring it into zkm-cms first.
+3. **Access for the live admin.** Add four destinations to the same Access application: `www.zachschneider.com` with paths `admin` and `admin/*`, and `zachschneider.com` with the same two. The AUD tag stays the same, so `.env` keeps its Access lines. `curl -I https://www.zachschneider.com/admin` should now redirect to `<team>.cloudflareaccess.com`; WordPress's own admin is `/wp-admin`, so visitors see no change.
+4. **Point zkm-cms at www:** in `.env`, `app.baseURL = 'https://www.zachschneider.com/'`, then `sudo -u apache php spark cache:clear`. The cache clear matters: cached pages hold staging URLs in their canonical links, feed and sitemap.
+5. **Switch:** `doctl compute reserved-ip-action assign <reserved-ip> <new-droplet-id>`, then `doctl compute reserved-ip get <reserved-ip>` to confirm.
+6. **Purge Cloudflare:** Caching → Configuration → Purge Everything. The WordPress Cloudflare plugin used to do this for you.
 7. **Verify:**
-   - `scripts/check-urls.sh urls.txt https://www.zachschneider.com`: every path should work.
-   - `curl -I https://www.zachschneider.com/wp-login.php` should return 410.
-   - `curl -I https://www.zachschneider.com/wp-content/uploads/2026/10/zach-portrait.webp` should 301 to `/uploads/…`.
-   - Check that the feed works in a reader and that the sitemap URL is right. In Search Console, submit `/sitemap.xml` in place of `/wp-sitemap.xml`.
-   - Check that the share card renders (paste a post URL into Mastodon), and that Analytics and Tag Manager fire (GA4 Realtime, the GTM preview). The Content-Security-Policy allows Google's tag scripts; a Custom HTML tag in the GTM container that loads scripts from other domains would be blocked, so check the browser console.
-   - `scripts/security-check.py https://www.zachschneider.com`: every check should pass.
-8. **Stop WordPress background jobs:** `sudo systemctl disable --now wp-cron.timer`. Use the timer's real name on the box. Leave the WordPress files and database where they are.
-9. **Watch it for a day:** `/var/log/httpd/*error_log`, `writable/logs/`, and `fail2ban-client status`.
+   - `curl -I https://www.zachschneider.com/wp-login.php` should return 410, and `/wp-content/uploads/…` should 301 to `/uploads/…`.
+   - `curl -I https://zachschneider.com/` should 301 to `https://www.zachschneider.com/`. That's a Cloudflare rule; zkm-cms doesn't redirect the bare domain itself.
+   - `scripts/check-urls.sh urls.txt https://www.zachschneider.com`: every path should work or answer 410 on purpose.
+   - `scripts/security-check.py https://www.zachschneider.com --expect-admin-gated`, with the service token's variables set: every check should pass.
+   - In the browser: sign in at `/admin`, edit a post, send a contact form message, read the feed, paste a post URL into Mastodon for the share card, and check GA4 Realtime and the GTM preview. The Content-Security-Policy allows Google's tag scripts; a Custom HTML tag in the GTM container that loads scripts from other domains would be blocked, so check the browser console.
+   - In Search Console, submit `/sitemap.xml` in place of `/wp-sitemap.xml`.
+8. **Stop WordPress background jobs** on the old droplet: `sudo systemctl disable --now wp-cron.timer`. Leave the WordPress files and database where they are.
+9. **Watch it for a day:** `/var/log/httpd/*error_log`, `writable/logs/`, `fail2ban-client status sshd`, and the first nightly backup.
 
 ### Rollback (any time in the first two weeks)
 
-1. Restore the `…conf.wordpress` vhost, then `sudo apachectl configtest && sudo systemctl reload httpd`.
+1. `doctl compute reserved-ip-action assign <reserved-ip> <old-droplet-id>`.
 2. Purge Cloudflare.
-3. Re-enable `wp-cron.timer`.
+3. Re-enable `wp-cron.timer` on the old droplet.
 
-The importer never writes to WordPress, so WordPress comes back exactly as it was. Anything published in zkm-cms after cutover would have to be re-entered by hand.
+The Access gate on `/admin` can stay. Anything published in zkm-cms after cutover would have to be re-entered in WordPress by hand.
 
 ## Phase 4 — Clean up (after about two weeks without trouble)
 
-1. Dump the WordPress database and tar `/var/www/html` into an off-box backup. Then remove the WordPress vhost, the files, the `wordpress` database and the `zkm_wp_ro` user.
-2. Remove the WordPress-only pieces: the wp-cron timer and its PHP settings. Remove the WordPress fail2ban jails (`wp-login`, `xmlrpc`). Disconnect Site Kit, BlogVault and similar services on their side.
-3. Delete the `<staging-host>` DNS record and its Access policy, or keep it as a permanent staging site.
-4. Take a new snapshot and drop the pre-cutover one once you're comfortable.
+1. Snapshot the old droplet, then delete it and its DigitalOcean firewall. Drop the snapshot the new droplet was cloned from once you're comfortable.
+2. Delete the `<staging-host>` DNS record and its Access destination, and its name in the vhost's `ServerAlias`, or keep it as a permanent staging site.
+3. Delete the Access service token and its Service Auth policy once you no longer need to run the security check through Access.
+4. Revoke the WP Mail SMTP token in Proton (zkm-cms has its own), and disconnect Site Kit, BlogVault and similar services on their side.
+5. Take a new snapshot of the new droplet.
 
 ## Security
 
@@ -182,8 +189,9 @@ Then check from a machine outside the allowed set: `scripts/security-check.py ht
 
 The droplet becomes the only copy of anything you write after cutover.
 
-- **Nightly:** dump the database (`mysqldump --single-transaction zkm | gzip > /var/backups/zkm-$(date +%F).sql.gz`, keeping 14 days) and `rsync` `public/uploads/` and the dumps off the box, for example to DigitalOcean Spaces or your RAID at home.
-- **Weekly:** turn on DigitalOcean droplet backups (20% of the droplet price) for whole-machine restores.
+- **Nightly, on the droplet:** a root systemd timer runs a script that dumps the database (`mysqldump --single-transaction zkm | gzip`) to `/var/backups/zkm/zkm-YYYY-MM-DD.sql.gz`, checks the file with `gzip -t`, and keeps 14 days.
+- **Nightly, off the box:** a machine at home pulls the dumps and `public/uploads/` an hour later (`rsync --rsync-path='sudo rsync'`, since both are root/apache-only on the droplet). Without `--delete`, so it keeps every dump and every upload, including ones later removed from the server. A user timer with `Persistent=true` catches up after the machine was off; have it refuse to run when the backup disk isn't mounted.
+- **Weekly:** DigitalOcean droplet backups (20% of the droplet price) for whole-machine restores.
 - **Keep `.env` in your password manager,** especially `encryption.key`. Without it, the stored authenticator secrets can't be read; you'd run `user:totp` again.
 - **Test a restore once,** into the local Docker stack: load the dump into `zkm` and copy the uploads into `public/uploads/`.
 
