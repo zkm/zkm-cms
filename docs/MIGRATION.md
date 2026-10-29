@@ -22,7 +22,7 @@ Server-specific values (droplet ID, admin login, staging hostname) are written a
 | # | Item | Size |
 | --- | --- | --- |
 | 1 | **Fresh content.** Import from the live database (Phase 2 does this) so Skywatch and the latest About-page edit come over. | covered by the plan |
-| 2 | **Deploy script.** Build locally (`composer install --no-dev`, `npm run build`), then rsync to the server without `writable/`, `public/uploads/` or `.env`. | small |
+| 2 | **Deploy script.** Done: `scripts/deploy.sh <user@host>` builds HEAD locally (`composer install --no-dev`, `npm run build`) and shows what rsync would change; `--go` deploys, without touching `writable/`, `public/uploads/` or `.env`, then runs migrations and clears the cache. | done |
 | 3 | **Lock the origin to Cloudflare.** Allow ports 80 and 443 on the droplet only from Cloudflare's ranges (DigitalOcean firewall), so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | small |
 | 4 | **fail2ban jail with the Cloudflare action** (see *Security* below). A firewall ban on the droplet does nothing, because visitors reach it through Cloudflare's addresses. | small |
 | 4a | **Admin access gate:** Cloudflare Access in front of `/admin`, plus the AUD check in `.env` (see *Security → Admin access*). Do this before the first sign-in on staging. | small |
