@@ -84,7 +84,6 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
-      SITE_URL: https://www.zachschneider.com/
     steps:
       - name: Only tags deploy
         run: |
@@ -96,6 +95,8 @@ jobs:
           sha256sum -c "zkm-cms-$TAG.tar.gz.sha256"
 
       # The key can only run the server's zkm-deploy script, which reads the tarball from stdin.
+      # It fails unless the home page answers 200 through the server's own Apache. (Not checked
+      # from here: Cloudflare's bot protection answers 403 to a runner's curl.)
       - name: Deploy
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -111,12 +112,6 @@ jobs:
       - name: Remove the key
         if: always()
         run: rm -f ~/.ssh/deploy_key
-
-      - name: The live site answers
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE_URL")
-          echo "$SITE_URL -> $code"
-          [ "$code" = 200 ]
 
       - name: Mark the release as deployed
         if: github.event_name == 'push'

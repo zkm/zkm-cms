@@ -18,7 +18,8 @@ git tag v1.2.0 && git push origin v1.2.0
 3. saves the tarball and its SHA-256 on a GitHub Release, marked pre-release;
 4. waits for approval on the `production` environment (Actions → the run → **Review deployments**);
 5. sends the tarball over SSH to the server, where `zkm-deploy` installs it;
-6. checks that the live home page answers 200 and marks the release as the latest.
+6. marks the release as the latest. (`zkm-deploy` has already checked the home page on the
+   server; a check from the runner would hit Cloudflare's bot protection and get 403.)
 
 On the server, `zkm-deploy` (`scripts/server/zkm-deploy`, installed at `/usr/local/sbin/`):
 unpacks the tarball as the unprivileged `deploy` user, checks it has a `RELEASE` file and the app's
