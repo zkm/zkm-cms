@@ -57,15 +57,18 @@ $routes->group('admin', static function (RouteCollection $routes) {
     $routes->get('(:any)', 'Admin\Spa::index', ['filter' => 'adminauth']);
 });
 
-$routes->get('/', 'Site::home');
-$routes->get('feed', 'Site::feed');
-$routes->get('sitemap.xml', 'Site::sitemap');
-$routes->addRedirect('wp-sitemap.xml', '/sitemap.xml', 301);
-$routes->get('robots.txt', 'Site::robots');
-$routes->get('favicon.ico', 'Site::favicon');
+// Public pages answer HEAD as well as GET: link checkers and uptime monitors send HEAD.
+$read = ['GET', 'HEAD'];
+$routes->match($read, '/', 'Site::home');
+$routes->match($read, 'feed', 'Site::feed');
+$routes->match($read, 'sitemap.xml', 'Site::sitemap');
+// Not addRedirect(): its any-method routes lose to the catch-all below.
+$routes->match($read, 'wp-sitemap.xml', 'Site::oldSitemap');
+$routes->match($read, 'robots.txt', 'Site::robots');
+$routes->match($read, 'favicon.ico', 'Site::favicon');
 $routes->post('contact-form', 'Site::contact');
 
 // Everything else: posts, pages, archives, redirects.
-$routes->get('(:any)', 'Site::resolve/$1');
+$routes->match($read, '(:any)', 'Site::resolve/$1');
 
 $routes->set404Override('App\Controllers\Site::notFound');

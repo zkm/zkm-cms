@@ -118,4 +118,28 @@ final class PermalinkRoutingTest extends CIUnitTestCase
         $this->assertStringNotContainsString('Secret', $xml);
         $this->assertNotFalse(simplexml_load_string($xml), 'The feed is well-formed XML');
     }
+
+    public function testHeadRequestsMatchGet(): void
+    {
+        $_SERVER['REQUEST_URI'] = '/fun/american-war-and-peace/';
+        $this->call('HEAD', '/fun/american-war-and-peace/')->assertOK();
+
+        foreach (['/', '/feed', '/sitemap.xml', '/robots.txt'] as $path) {
+            $_SERVER['REQUEST_URI'] = $path;
+            $this->assertSame($this->get($path)->response()->getStatusCode(), $this->call('HEAD', $path)->response()->getStatusCode(), $path);
+        }
+
+        $_SERVER['REQUEST_URI'] = '/fun/american-war-and-peace';
+        $this->call('HEAD', '/fun/american-war-and-peace')->assertRedirectTo('/fun/american-war-and-peace/');
+    }
+
+    public function testOldWordPressSitemapRedirects(): void
+    {
+        foreach (['GET', 'HEAD'] as $method) {
+            $_SERVER['REQUEST_URI'] = '/wp-sitemap.xml';
+            $result = $this->call($method, '/wp-sitemap.xml');
+            $result->assertRedirectTo('/sitemap.xml');
+            $result->assertStatus(301);
+        }
+    }
 }
