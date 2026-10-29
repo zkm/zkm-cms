@@ -12,6 +12,10 @@ real responses carry. --uploads-dir plants (and removes) probe files in the uplo
 folder, so only use it on a local or CI copy. With --email and --password it also signs
 in (without two-factor) and checks the upload rules and CSRF on the API.
 
+For a site behind Cloudflare Access, set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET
+to a service token the Access app allows (a Service Auth policy); every request sends them.
+The app still answers /admin with 404 to a service token, so add --expect-admin-gated.
+
 Exits 1 if any check fails. Uses only the standard library.
 """
 
@@ -43,14 +47,21 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def access_headers():
+    """A Cloudflare Access service token from the environment, to get past an Access gate."""
+    client_id, secret = os.environ.get('CF_ACCESS_CLIENT_ID'), os.environ.get('CF_ACCESS_CLIENT_SECRET')
+    return {'CF-Access-Client-Id': client_id, 'CF-Access-Client-Secret': secret} if client_id and secret else {}
+
+
 class Client:
     def __init__(self, base):
         self.base = base.rstrip('/')
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar), NoRedirect)
+        self.extra = access_headers()
 
     def request(self, method, path, data=None, headers=None):
-        req = urllib.request.Request(self.base + path, data=data, method=method, headers={'User-Agent': 'zkm-cms security check', **(headers or {})})
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers={'User-Agent': 'zkm-cms security check', **self.extra, **(headers or {})})
         try:
             res = self.opener.open(req, timeout=20)
             return res.status, res.headers, res.read()
