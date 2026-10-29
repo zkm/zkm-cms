@@ -30,6 +30,7 @@ scripts/check-urls.sh https://www.zachschneider.com http://localhost:8090      #
 
 scripts/deploy.sh <user@host>         # builds HEAD (no dev deps) and shows what rsync would change
 scripts/deploy.sh <user@host> --go    # deploys; never touches .env, writable/ or public/uploads/
+git tag vX.Y.Z && git push origin vX.Y.Z   # release: CI tests, builds, and deploys after approval (docs/DEPLOY.md)
 ```
 
 Always pass `--no-coverage`: `phpunit.dist.xml` asks for coverage reports and there's no coverage driver. `security-check.py --uploads-dir` plants probe files, so use it only on local/CI copies. CI (`.github/workflows/tests.yml`) runs PHPUnit + `composer audit`, the admin build + `npm audit`, and the security check and smoke test against the real Docker stack.

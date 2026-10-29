@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Installs a zkm-cms release tarball read from stdin. Lives on the server as
+# /usr/local/sbin/zkm-deploy (root 755), put there by setup-ci-deploy.sh.
+#
+# GitHub Actions (.github/workflows/deploy.yml) reaches it through the deploy user,
+# whose SSH key is forced to run `sudo -n /usr/local/sbin/zkm-deploy` and nothing else.
+# By hand, as root:  zkm-deploy < /var/lib/zkm-deploy/releases/<version>.tar.gz
+#
+# Like scripts/deploy.sh it syncs into /var/www/zkm-cms as zkm:apache (files 640,
+# directories 750), never touches .env, writable/ or public/uploads/ (apart from the
+# uploads .htaccess), then runs migrations and clears the page cache. The tarball is
+# unpacked as the unprivileged deploy user, and the last five are kept for rollback.
+
+set -uo pipefail
+umask 027
+
+target=/var/www/zkm-cms
+work=/var/lib/zkm-deploy
+max_bytes=$((200 * 1024 * 1024))
+keep=5
+
+fail() { echo "zkm-deploy: $1" >&2; logger -t zkm-deploy "failed: $1"; exit 1; }
+
+[ "$(id -u)" = 0 ] || fail "run as root"
+[ -f "$target/.env" ] || fail "$target/.env is missing; set up the first deploy by hand"
+
+exec 9>"$work/lock" || fail "cannot open $work/lock"
+flock -n 9 || fail "another deploy is running"
+
+incoming=$work/incoming.tar.gz
+stage=$(mktemp -d "$work/stage.XXXXXX") || fail "cannot make a staging directory"
+trap 'rm -rf "$stage" "$incoming"' EXIT
+
+head -c $((max_bytes + 1)) > "$incoming" || fail "could not read the tarball"
+size=$(stat -c %s "$incoming")
+[ "$size" -gt 0 ] || fail "no tarball on stdin"
+[ "$size" -le "$max_bytes" ] || fail "tarball is over $((max_bytes / 1024 / 1024)) MB"
+
+chown deploy: "$stage" && chmod 700 "$stage"
+runuser -u deploy -- tar -xzf - -C "$stage" --no-same-owner --no-same-permissions < "$incoming" || fail "could not unpack the tarball"
+
+read -r version commit 2>/dev/null < "$stage/RELEASE" || fail "no RELEASE file"
+[[ $version =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ && $commit =~ ^[0-9a-f]{40}$ ]] || fail "RELEASE file is malformed"
+for f in public/index.php spark vendor/autoload.php public/admin-app/manifest.json public/uploads/.htaccess; do
+  [ -f "$stage/$f" ] || fail "release is missing $f"
+done
+
+echo "Deploying $version ($commit)"
+perms=(--chown=zkm:apache --chmod=Du=rwx,Dg=rx,Do=,Fu=rw,Fg=r,Fo=)
+# Leading slashes anchor each pattern at the project root; excluded paths are also
+# protected from --delete. --safe-links drops symlinks that point outside the tree.
+rsync -rlpti --delete --safe-links "${perms[@]}" \
+  --exclude=/.env --exclude=/writable/ --exclude=/public/uploads/ \
+  "$stage/" "$target/" || fail "rsync failed"
+rsync -pti "${perms[@]}" "$stage/public/uploads/.htaccess" "$target/public/uploads/.htaccess" || fail "rsync of the uploads .htaccess failed"
+restorecon -R "$target" || fail "restorecon failed"
+
+cd "$target" || fail "no $target"
+sudo -u apache php spark migrate --all || fail "migrations failed; the new code is live"
+sudo -u apache php spark cache:clear || fail "cache clear failed"
+
+# The home page through the local Apache, as Cloudflare would ask for it.
+base=$(sed -n "s/^app\.baseURL *= *['\"]\(.*\)['\"]/\1/p" .env)
+host=$(printf '%s' "$base" | sed -E 's#^https?://([^/:]+).*#\1#')
+code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 --resolve "$host:443:127.0.0.1" "https://$host/")
+[ "$code" = 200 ] || fail "home page answered $code after deploying $version"
+
+mkdir -p "$work/releases"
+cp "$incoming" "$work/releases/$version.tar.gz"
+ls -1t "$work/releases"/*.tar.gz | tail -n +$((keep + 1)) | xargs -r rm -f --
+
+logger -t zkm-deploy "deployed $version ($commit)"
+echo "Deployed $version. Home page: $code."
