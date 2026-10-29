@@ -24,7 +24,7 @@ Server-specific values (droplet ID, admin login, staging hostname) are written a
 | 1 | **Fresh content.** Import from the live database (Phase 2 does this) so Skywatch and the latest About-page edit come over. | covered by the plan |
 | 2 | **Deploy script.** Done: `scripts/deploy.sh <user@host>` builds HEAD locally (`composer install --no-dev`, `npm run build`) and shows what rsync would change; `--go` deploys, without touching `writable/`, `public/uploads/` or `.env`, then runs migrations and clears the cache. | done |
 | 3 | **Lock the origin to Cloudflare.** Allow ports 80 and 443 on the droplet only from Cloudflare's ranges (DigitalOcean firewall), so nobody can skip Cloudflare by connecting to the server's IP. The app only trusts `CF-Connecting-IP` from those ranges either way. | small |
-| 4 | **fail2ban jail with the Cloudflare action** (see *Security* below). A firewall ban on the droplet does nothing, because visitors reach it through Cloudflare's addresses. | small |
+| 4 | **fail2ban jail with the Cloudflare action.** Dropped: behind Cloudflare Access it could only ban the site owner (see *Security → Server setup*). | dropped |
 | 4a | **Admin access gate:** Cloudflare Access in front of `/admin`, plus the AUD check in `.env` (see *Security → Admin access*). Do this before the first sign-in on staging. | small |
 | 4b | **Backups:** nightly database dump and off-box copy of uploads; droplet backups on (see *Security → Backups*). | small |
 | 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. Optional. | optional |
@@ -113,7 +113,7 @@ The importer never writes to WordPress, so WordPress comes back exactly as it wa
 ## Phase 4 — Clean up (after about two weeks without trouble)
 
 1. Dump the WordPress database and tar `/var/www/html` into an off-box backup. Then remove the WordPress vhost, the files, the `wordpress` database and the `zkm_wp_ro` user.
-2. Remove the WordPress-only pieces: the wp-cron timer and its PHP settings. Swap the WordPress fail2ban jails (`wp-login`, `xmlrpc`) for the zkm-cms jail. Disconnect Site Kit, BlogVault and similar services on their side.
+2. Remove the WordPress-only pieces: the wp-cron timer and its PHP settings. Remove the WordPress fail2ban jails (`wp-login`, `xmlrpc`). Disconnect Site Kit, BlogVault and similar services on their side.
 3. Delete the `<staging-host>` DNS record and its Access policy, or keep it as a permanent staging site.
 4. Take a new snapshot and drop the pre-cutover one once you're comfortable.
 
@@ -143,7 +143,7 @@ Done in the code (tests in `tests/`, HTTP checks in `scripts/security-check.py`,
   - `composer audit` and `npm audit` run in CI, and Dependabot opens update PRs.
 
 - **Sessions:** a session ends after 8 hours idle or 12 hours in total, and immediately if the user is deleted. Changing the password, the sign-in email or two-factor signs out every other session. The **Account** page also has "Sign out everywhere else".
-- **Logging:** production keeps warnings and info, so failed, throttled and successful sign-ins reach `writable/logs/` for fail2ban. The framework's default drops them.
+- **Logging:** production keeps warnings and info, so failed, throttled and successful sign-ins reach `writable/logs/`. The framework's default drops them.
 
 ### Admin access
 
@@ -197,26 +197,13 @@ The droplet becomes the only copy of anything you write after cutover.
 ### Server setup
 
 1. `.env` needs `encryption.key` from `php spark key:generate` **before** `php spark user:totp`. Back up the key: without it, the stored authenticator secrets can't be read, and you'd have to run `user:totp` again.
-2. fail2ban, banning at Cloudflare. Create an API token with *Account Filter Lists: Edit* or *Zone Firewall: Edit*, then add:
+2. **No fail2ban jail for sign-ins.** This was planned before the Access gate. With Cloudflare Access in front of `/admin` and the droplet's ports 80 and 443 open only to Cloudflare, nobody but the allowed account can reach the sign-in form, so such a jail could only ever ban the site owner, while keeping a firewall-editing API token on the server. The app's own limits (5 tries a minute per address, 10 per 15 minutes per account) still apply. fail2ban keeps its `sshd` jail, which bans on the droplet itself; SSH doesn't go through Cloudflare.
 
-   `/etc/fail2ban/filter.d/zkm-cms.conf`
-   ```ini
-   [Definition]
-   failregex = ^WARNING - \S+ \S+ --> Admin sign-in (?:failed|throttled|refused) for <HOST>
-   datepattern = ^WARNING - %%Y-%%m-%%d %%H:%%M:%%S
-   ```
-   `/etc/fail2ban/jail.d/zkm-cms.local`
-   ```ini
-   [zkm-cms]
-   enabled  = true
-   filter   = zkm-cms
-   logpath  = /var/www/zkm-cms/writable/logs/log-*.log
-   maxretry = 5
-   findtime = 600
-   bantime  = 86400
-   action   = cloudflare-token[cfzone="zachschneider.com", cftoken="<token>"]
-   ```
-   Test the filter with `fail2ban-regex /var/www/zkm-cms/writable/logs/log-$(date +%F).log /etc/fail2ban/filter.d/zkm-cms.conf`.
+   If you add one anyway (for example, without Access), these are the snags found when trying:
+   - **SELinux:** `fail2ban_t` reads only log types, and it can't override file permissions. `writable/logs` is `httpd_sys_rw_content_t` under `750` directories owned by `zkm` and `apache`, so the jail fails with *Permission denied*, even though `fail2ban-regex` works from a root shell. Both the label and the permissions would have to change, and deploys must not undo them.
+   - **Time zone:** the log uses the app's time zone (America/Chicago); a UTC server needs `datepattern = {NONE}`, because `logtimezone` takes only fixed offsets.
+   - **Daily files:** fail2ban expands `logpath` globs only when the jail starts, so a new `log-YYYY-MM-DD.log` needs a daily `fail2ban-client reload zkm-cms`. Reload that jail alone: a failed `fail2ban-client reload` of everything leaves the other jails stopped.
+   - **Cloudflare action:** `cloudflare-token` takes the zone **ID** (`cfzone=<32 hex characters>`), not the domain name, and needs a token with *Zone → Firewall Services → Edit*. If the token is limited by client IP, include the droplet's IPv6 address as well: it reaches the Cloudflare API over IPv6. `/user/tokens/verify` ignores that IP filter, so test with a zone request instead.
 3. Cloudflare: turn on *Always Use HTTPS*. Consider a WAF rule or rate limit for `/admin/*` and `/contact-form`, or put `/admin` behind Cloudflare Access too.
 
 ## Things that intentionally change
