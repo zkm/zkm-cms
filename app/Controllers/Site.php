@@ -423,7 +423,9 @@ class Site extends BaseController
 
         $data['documentTitle'] = $data['title'] !== null ? $data['title'] . ' – ' . $site['site_name'] : $site['site_name'] . ' – ' . $site['tagline'];
         $data['description'] ??= $site['tagline'];
-        $data['ogImage'] ??= ['url' => $this->absolute('/theme/images/social-card.jpg'), 'width' => 1200, 'height' => 630, 'alt' => $site['site_name'] . ' – ' . $site['tagline']];
+        // Versioned so social scrapers and Cloudflare pick up a replaced card.
+        $card = 'theme/images/social-card.jpg';
+        $data['ogImage'] ??= ['url' => $this->absolute('/' . $card . '?v=' . (@filemtime(FCPATH . $card) ?: '1')), 'width' => 1200, 'height' => 630, 'alt' => $site['site_name'] . ' – ' . $site['tagline']];
         $data['canonicalUrl'] = $data['canonical'] !== null ? $this->absolute($data['canonical']) : null;
         $data['primaryMenu']  = menu_links('primary');
         $data['socialMenu']   = menu_links('social');
