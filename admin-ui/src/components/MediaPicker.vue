@@ -42,9 +42,16 @@ function onEscape(event) {
   }
 }
 
-// A click outside the box lands on the <dialog> itself (its backdrop).
+// A click outside the box lands on the <dialog> itself (its backdrop). The press must start
+// there too: a drag from inside the box that ends outside is also dispatched to the <dialog>.
+let pressedBackdrop = false
+
+function onMousedown(event) {
+  pressedBackdrop = event.target === dialog.value
+}
+
 function onClick(event) {
-  if (event.target === dialog.value) emit('close')
+  if (event.target === dialog.value && pressedBackdrop) emit('close')
 }
 
 // showModal() makes the rest of the page inert and keeps focus inside.
@@ -60,7 +67,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal" aria-labelledby="media-picker-title" @keydown.esc="onEscape" @close="emit('close')" @click="onClick">
+  <dialog ref="dialog" class="modal" aria-labelledby="media-picker-title" @keydown.esc="onEscape" @close="emit('close')" @mousedown="onMousedown" @click="onClick">
     <div class="modal-body">
       <div class="page-head">
         <h2 id="media-picker-title">Choose {{ imagesOnly ? 'an image' : 'a file' }}</h2>
