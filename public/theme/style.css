@@ -13,7 +13,9 @@
   --zkm-link: #5df2ff;
   --zkm-link-hover: #e8f7ff;
   --zkm-border: #264a72;
-  --zkm-focus: #ffe082;
+  /* For things that sit on a dark background in both themes, like the skip link. */
+  --zkm-focus-on-dark: #ffe082;
+  --zkm-focus: var(--zkm-focus-on-dark);
   --zkm-neon-cyan: #5df2ff;
   --zkm-neon-violet: #b68cff;
   --zkm-neon-pink: #ff5fd2;
@@ -1515,7 +1517,7 @@ body.zkm-animate.zkm-ready .social-navigation .menu-item {
   background: #0b111b;
   color: #ffffff;
   border-radius: 0.45rem;
-  border: 2px solid #ffe082;
+  border: 2px solid var(--zkm-focus-on-dark);
   text-decoration: none;
 }
 

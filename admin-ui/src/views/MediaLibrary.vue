@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
 import { flash } from '../notice.js'
+import UploadButton from '../components/UploadButton.vue'
 
 const result = ref(null)
 const q = ref('')
@@ -9,7 +10,6 @@ const page = ref(1)
 const selected = ref(null)
 const uploading = ref(0)
 const dragging = ref(false)
-const fileInput = ref(null)
 
 async function load() {
   result.value = await api.get('media', { q: q.value, page: page.value })
@@ -69,11 +69,8 @@ onMounted(load)
 <template>
   <div class="page-head">
     <h1>Media</h1>
-    <!-- A real button, so the keyboard can reach it; it opens the hidden file input. -->
-    <button type="button" class="button primary" @click="fileInput.click()">
-      {{ uploading ? `Uploading ${uploading}…` : 'Upload files' }}
-    </button>
-    <input ref="fileInput" type="file" multiple hidden @change="uploadFiles([...$event.target.files]); $event.target.value = ''">
+    <!-- Not busy while uploading: uploadFiles() counts uploads, so more can be added. -->
+    <UploadButton multiple @files="uploadFiles">{{ uploading ? `Uploading ${uploading}…` : 'Upload files' }}</UploadButton>
   </div>
   <div class="dropzone" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
     Drop files here to upload. Images get 300px and 1024px copies, like WordPress made.

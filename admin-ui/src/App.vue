@@ -37,9 +37,13 @@ const nav = [
     <main class="content">
       <RouterView />
     </main>
-    <!-- The live region stays in the page; screen readers miss one that appears with its text. -->
+    <!-- Live regions stay in the page; screen readers miss one that appears with its text.
+         Errors go in an alert, so they're read at once rather than queued. -->
     <div role="status">
-      <p v-if="notice.text" class="notice" :class="notice.kind">{{ notice.text }}</p>
+      <p v-if="notice.text && notice.kind !== 'error'" class="notice" :class="notice.kind">{{ notice.text }}</p>
+    </div>
+    <div role="alert">
+      <p v-if="notice.text && notice.kind === 'error'" class="notice error">{{ notice.text }}</p>
     </div>
   </div>
 </template>
