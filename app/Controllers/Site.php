@@ -467,14 +467,14 @@ class Site extends BaseController
      */
     private function cached(string $key, callable $build): ResponseInterface
     {
-        // Before anything reads the session: starting it drops a malformed cookie from
-        // $_COOKIE and sets a new one, which must not go out with a public header.
-        $cookie    = has_visitor_session();
         $anonymous = visitor_session('user_id') === null && $this->request->getUri()->getQuery() === '';
         $tribute   = config('Tribute')?->isActive() ? 'tribute:' : '';
         $html      = $anonymous ? SiteCache::remember('page:' . $tribute . $key, self::CACHE_TTL, $build) : $build();
 
-        $anonymous && ! $cookie
+        // A started session means a session cookie, so the response is this visitor's.
+        // Checking the cookie alone isn't enough: starting a session (as resolve() may,
+        // before this runs) drops a malformed cookie from $_COOKIE and sets a new one.
+        $anonymous && ! has_visitor_session() && session_status() !== PHP_SESSION_ACTIVE
             ? $this->response->setCache(['public', 'max-age' => 0, 's-maxage' => self::EDGE_TTL])
             : $this->response->noCache();
 
