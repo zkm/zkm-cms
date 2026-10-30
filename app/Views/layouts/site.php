@@ -5,7 +5,7 @@
  * @var array<string, string> $site
  */
 $tribute = config('Tribute');
-$tributeOn = $tribute !== null && $tribute->enabled;
+$tributeOn = $tribute !== null && $tribute->isActive();
 $themeVersion = static fn (string $file) => esc('/theme/' . $file . '?v=' . (@filemtime(FCPATH . 'theme/' . $file) ?: '1'), 'attr');
 $meta = [
     ['name', 'description', $description],
@@ -61,7 +61,7 @@ $meta = [
 <?php endif ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&amp;family=Rajdhani:wght@400;500;600;700<?= $tributeOn ? '&amp;family=Antonio:wght@400;600;700' : '' ?>&amp;display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&amp;family=Rajdhani:wght@400;500;600;700&amp;display=swap">
     <link rel="stylesheet" href="<?= $themeVersion('blocks.css') ?>">
     <link rel="stylesheet" href="<?= $themeVersion('style.css') ?>">
 <?php if ($tributeOn): ?>
@@ -75,7 +75,7 @@ $meta = [
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','<?= esc($site['gtm_id'], 'js') ?>');</script>
 <?php endif ?>
 </head>
-<body class="<?= esc(trim($bodyClass . ' wp-theme-zkm-wp-theme' . ($tributeOn ? ' trek-tribute' : '')), 'attr') ?>">
+<body class="<?= esc(trim($bodyClass . ' wp-theme-zkm-wp-theme'), 'attr') ?>">
 <a class="skip-link screen-reader-text" href="#primary">Skip to content</a>
 
 <div class="site-header-wrap">
@@ -123,9 +123,6 @@ $meta = [
 
 <main id="primary" class="site-main">
     <div class="content-area">
-<?php if ($tributeOn && $isHome && $currentPath === '/'): ?>
-<?= view('site/tribute_roll', ['tribute' => $tribute]) ?>
-<?php endif ?>
 <?= $content ?>
     </div>
 </main>
