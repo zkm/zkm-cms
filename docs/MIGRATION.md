@@ -25,7 +25,7 @@ Server-specific values (droplet IDs and addresses, the reserved IP, the staging 
 | 4 | **fail2ban jail with the Cloudflare action.** Dropped: behind Cloudflare Access it could only ban the site owner (see *Security → Server setup*). | dropped |
 | 4a | **Admin access gate:** Cloudflare Access plus the AUD check in `.env` (see *Security → Admin access*). On staging now; `www` gets it in Phase 3. | done for staging |
 | 4b | **Backups:** nightly database dump, off-box copy of the dumps and uploads, droplet backups on (see *Security → Backups*). | done |
-| 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*` and `/contact-form`. | optional |
+| 5 | **Cloudflare HTML caching.** Public pages never set cookies, so a Cache Rule can cache HTML at the edge, bypassing `/admin/*`, `/contact-form`, and any request with a `zkm_session` cookie. Leave Edge TTL on "respect origin": responses that read a session (such as `/contact/?error=1`, with a visitor's message) send `Cache-Control: private, no-store`. | optional |
 | 6 | Review the private and draft posts. Old classic-editor posts get automatic paragraphs and may need touch-ups. Some 2008–09 posts embed Flash, which no browser plays now. | your call |
 | 7 | The one past Fluent Forms submission isn't migrated. Export it from WP admin if you want it. | trivial |
 

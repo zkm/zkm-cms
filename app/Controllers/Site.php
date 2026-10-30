@@ -13,6 +13,7 @@ use App\Models\RedirectModel;
 use App\Models\SettingModel;
 use App\Models\TermModel;
 use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 
 /**
@@ -227,7 +228,10 @@ class Site extends BaseController
      */
     public function contact(): ResponseInterface
     {
-        $back = self::localPath((string) $this->request->getPost('return'), '/contact/');
+        // The canonical path only. A "#" or "?" would mangle the ?error=1 added below, and a
+        // missing slash would cost a 301 that uses up the flash data before the form shows it.
+        $back = self::localPath((string) parse_url((string) $this->request->getPost('return'), PHP_URL_PATH), '/contact/');
+        $back = rtrim($back, '/') . '/';
 
         // Bots fill in the hidden field.
         if ((string) $this->request->getPost('website') !== '') {
@@ -237,7 +241,7 @@ class Site extends BaseController
         $throttler = service('throttler');
 
         if (! $throttler->check('contact-' . md5($this->request->getIPAddress()), 5, HOUR)) {
-            return redirect()->to($back . '?error=1#contact-form', 303)->with('contact_errors', ['Too many messages from your address. Please try again later.']);
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->with('contact_errors', ['Too many messages from your address. Please try again later.']);
         }
 
         $rules = [
@@ -247,7 +251,7 @@ class Site extends BaseController
         ];
 
         if (! $this->validate($rules)) {
-            return redirect()->to($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', $this->validator->getErrors());
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', $this->validator->getErrors());
         }
 
         $data = [
@@ -472,7 +476,7 @@ class Site extends BaseController
         return rtrim($requested, '/') . '/' === $target && str_ends_with($requested, '/') ? null : $this->redirectTo($target);
     }
 
-    private function redirectTo(string $path, int $code = 301): ResponseInterface
+    private function redirectTo(string $path, int $code = 301): RedirectResponse
     {
         $query = $this->request->getUri()->getQuery();
         $keep  = $query !== '' && ! str_contains($path, '?') && ! preg_match('/(^|&)(p|page_id)=/', $query);

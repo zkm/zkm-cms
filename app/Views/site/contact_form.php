@@ -1,10 +1,15 @@
 <?php
 /**
  * The contact form. It reuses Fluent Forms' class names, which zkm-wp-theme already styles.
+ *
+ * Errors and old input are read only on ?error=1, which has a query string and so never
+ * reaches the page cache: one visitor's message must not be cached for the next.
  */
-$errors = visitor_session('contact_errors') ?? [];
-$old    = static fn (string $field) => visitor_session('_ci_old_input')['post'][$field] ?? '';
-$sent   = service('request')->getGet('sent') === '1';
+$request = service('request');
+$failed  = $request->getGet('error') === '1';
+$errors  = $failed ? visitor_session('contact_errors') ?? [] : [];
+$old     = static fn (string $field) => $failed ? visitor_session('_ci_old_input')['post'][$field] ?? '' : '';
+$sent    = $request->getGet('sent') === '1';
 ?>
 <div class="fluentform" id="contact-form">
 <?php if ($sent): ?>
