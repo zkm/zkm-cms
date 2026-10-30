@@ -11,16 +11,6 @@ use CodeIgniter\Test\CIUnitTestCase;
  */
 final class SecurityHelpersTest extends CIUnitTestCase
 {
-    public function testLocalPathOnlyAcceptsPathsOnThisSite(): void
-    {
-        $this->assertSame('/contact/', Site::localPath('/contact/', '/x/'));
-        $this->assertSame('/fun/post/?a=1', Site::localPath('/fun/post/?a=1', '/x/'));
-
-        foreach (['//evil.example/', '/\\evil.example/', 'https://evil.example/', 'javascript:alert(1)', '', "/ok\r\nLocation: x", "/\tx"] as $bad) {
-            $this->assertSame('/x/', Site::localPath($bad, '/x/'), var_export($bad, true));
-        }
-    }
-
     public function testOneLineStripsHeaderInjection(): void
     {
         $this->assertSame('Eve Bcc: victim@example.com', Site::oneLine("Eve\r\nBcc: victim@example.com"));

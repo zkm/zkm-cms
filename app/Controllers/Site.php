@@ -23,6 +23,8 @@ class Site extends BaseController
 {
     private const CACHE_TTL = 3600;
 
+    private const EDGE_TTL = 300;
+
     protected $helpers = ['site', 'form'];
 
     private Permalinks $links;
@@ -228,10 +230,7 @@ class Site extends BaseController
      */
     public function contact(): ResponseInterface
     {
-        // The canonical path only. A "#" or "?" would mangle the ?error=1 added below, and a
-        // missing slash would cost a 301 that uses up the flash data before the form shows it.
-        $back = self::localPath((string) parse_url((string) $this->request->getPost('return'), PHP_URL_PATH), '/contact/');
-        $back = rtrim($back, '/') . '/';
+        $back = $this->contactPage((string) $this->request->getPost('return'));
 
         // Bots fill in the hidden field.
         if ((string) $this->request->getPost('website') !== '') {
@@ -281,12 +280,17 @@ class Site extends BaseController
     }
 
     /**
-     * A path on this site, or $default. Rejects anything a browser could read as
-     * another host: //host, /\\host, schemes, and control characters.
+     * Where the contact form sends people back to: the canonical permalink of the page
+     * they came from, looked up here rather than taken from the form. Any other hop (a
+     * 301 for a missing slash, a moved page) would use up the flash data, and the
+     * ?error=1 page would show no errors.
      */
-    public static function localPath(string $path, string $default): string
+    private function contactPage(string $return): string
     {
-        return preg_match('#^/(?![/\\\\])[^\\x00-\\x1f\\x7f]*$#', $path) === 1 ? $path : $default;
+        $pages = model(PostModel::class)->where('template', 'contact')->where('status', 'published')->orderBy('id')->findAll();
+        $urls  = array_map(fn (array $page) => $this->links->post($page), $pages);
+
+        return in_array($return, $urls, true) ? $return : ($urls[0] ?? '/');
     }
 
     /**
@@ -455,12 +459,24 @@ class Site extends BaseController
 
     /**
      * Serve a public page from the cache when nobody is signed in to the admin.
+     *
+     * Only a request with no session cookie and no query string gets a public Cache-Control,
+     * so Cloudflare (docs/MIGRATION.md, step 5) can keep it. Everything else is no-store,
+     * as are all responses that don't come through here. EDGE_TTL is short because
+     * SiteCache::flush() can't purge Cloudflare.
      */
     private function cached(string $key, callable $build): ResponseInterface
     {
+        // Before anything reads the session: starting it drops a malformed cookie from
+        // $_COOKIE and sets a new one, which must not go out with a public header.
+        $cookie    = has_visitor_session();
         $anonymous = visitor_session('user_id') === null && $this->request->getUri()->getQuery() === '';
         $tribute   = config('Tribute')?->isActive() ? 'tribute:' : '';
         $html      = $anonymous ? SiteCache::remember('page:' . $tribute . $key, self::CACHE_TTL, $build) : $build();
+
+        $anonymous && ! $cookie
+            ? $this->response->setCache(['public', 'max-age' => 0, 's-maxage' => self::EDGE_TTL])
+            : $this->response->noCache();
 
         return $this->response->setBody($html);
     }

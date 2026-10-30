@@ -134,18 +134,19 @@ if (! function_exists('lazy_images')) {
 if (! function_exists('visitor_session')) {
     /**
      * A session value, without starting a session for visitors who don't have one.
-     *
-     * A response that read a session may carry that visitor's data, so it is marked
-     * private, and Cloudflare or any other shared cache won't keep it.
      */
     function visitor_session(string $key): mixed
     {
-        if (! isset($_COOKIE[config('Session')->cookieName])) {
-            return null;
-        }
+        return has_visitor_session() ? session($key) : null;
+    }
+}
 
-        service('response')->removeHeader('Cache-Control')->setHeader('Cache-Control', 'private, no-store');
-
-        return session($key);
+if (! function_exists('has_visitor_session')) {
+    /**
+     * Whether the visitor sent a session cookie (and so may see pages built for them).
+     */
+    function has_visitor_session(): bool
+    {
+        return isset($_COOKIE[config('Session')->cookieName]);
     }
 }

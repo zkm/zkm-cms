@@ -8,7 +8,8 @@
 $request = service('request');
 $failed  = $request->getGet('error') === '1';
 $errors  = $failed ? visitor_session('contact_errors') ?? [] : [];
-$old     = static fn (string $field) => $failed ? visitor_session('_ci_old_input')['post'][$field] ?? '' : '';
+$input   = $failed ? visitor_session('_ci_old_input')['post'] ?? [] : [];
+$old     = static fn (string $field) => $input[$field] ?? '';
 $sent    = $request->getGet('sent') === '1';
 ?>
 <div class="fluentform" id="contact-form">
