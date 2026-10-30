@@ -137,6 +137,16 @@ if (! function_exists('visitor_session')) {
      */
     function visitor_session(string $key): mixed
     {
-        return isset($_COOKIE[config('Session')->cookieName]) ? session($key) : null;
+        return has_visitor_session() ? session($key) : null;
+    }
+}
+
+if (! function_exists('has_visitor_session')) {
+    /**
+     * Whether the visitor sent a session cookie (and so may see pages built for them).
+     */
+    function has_visitor_session(): bool
+    {
+        return isset($_COOKIE[config('Session')->cookieName]);
     }
 }

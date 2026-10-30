@@ -13,6 +13,7 @@ use App\Models\RedirectModel;
 use App\Models\SettingModel;
 use App\Models\TermModel;
 use CodeIgniter\Exceptions\PageNotFoundException;
+use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
 
 /**
@@ -21,6 +22,8 @@ use CodeIgniter\HTTP\ResponseInterface;
 class Site extends BaseController
 {
     private const CACHE_TTL = 3600;
+
+    private const EDGE_TTL = 300;
 
     protected $helpers = ['site', 'form'];
 
@@ -227,7 +230,7 @@ class Site extends BaseController
      */
     public function contact(): ResponseInterface
     {
-        $back = self::localPath((string) $this->request->getPost('return'), '/contact/');
+        $back = $this->contactPage((string) $this->request->getPost('return'));
 
         // Bots fill in the hidden field.
         if ((string) $this->request->getPost('website') !== '') {
@@ -237,7 +240,7 @@ class Site extends BaseController
         $throttler = service('throttler');
 
         if (! $throttler->check('contact-' . md5($this->request->getIPAddress()), 5, HOUR)) {
-            return redirect()->to($back . '?error=1#contact-form', 303)->with('contact_errors', ['Too many messages from your address. Please try again later.']);
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->with('contact_errors', ['Too many messages from your address. Please try again later.']);
         }
 
         $rules = [
@@ -247,7 +250,7 @@ class Site extends BaseController
         ];
 
         if (! $this->validate($rules)) {
-            return redirect()->to($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', $this->validator->getErrors());
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', $this->validator->getErrors());
         }
 
         $data = [
@@ -277,12 +280,17 @@ class Site extends BaseController
     }
 
     /**
-     * A path on this site, or $default. Rejects anything a browser could read as
-     * another host: //host, /\\host, schemes, and control characters.
+     * Where the contact form sends people back to: the canonical permalink of the page
+     * they came from, looked up here rather than taken from the form. Any other hop (a
+     * 301 for a missing slash, a moved page) would use up the flash data, and the
+     * ?error=1 page would show no errors.
      */
-    public static function localPath(string $path, string $default): string
+    private function contactPage(string $return): string
     {
-        return preg_match('#^/(?![/\\\\])[^\\x00-\\x1f\\x7f]*$#', $path) === 1 ? $path : $default;
+        $pages = model(PostModel::class)->where('template', 'contact')->where('status', 'published')->orderBy('id')->findAll();
+        $urls  = array_map(fn (array $page) => $this->links->post($page), $pages);
+
+        return in_array($return, $urls, true) ? $return : ($urls[0] ?? '/');
     }
 
     /**
@@ -451,12 +459,24 @@ class Site extends BaseController
 
     /**
      * Serve a public page from the cache when nobody is signed in to the admin.
+     *
+     * Only a request with no session cookie and no query string gets a public Cache-Control,
+     * so Cloudflare (docs/MIGRATION.md, step 5) can keep it. Everything else is no-store,
+     * as are all responses that don't come through here. EDGE_TTL is short because
+     * SiteCache::flush() can't purge Cloudflare.
      */
     private function cached(string $key, callable $build): ResponseInterface
     {
+        // Before anything reads the session: starting it drops a malformed cookie from
+        // $_COOKIE and sets a new one, which must not go out with a public header.
+        $cookie    = has_visitor_session();
         $anonymous = visitor_session('user_id') === null && $this->request->getUri()->getQuery() === '';
         $tribute   = config('Tribute')?->isActive() ? 'tribute:' : '';
         $html      = $anonymous ? SiteCache::remember('page:' . $tribute . $key, self::CACHE_TTL, $build) : $build();
+
+        $anonymous && ! $cookie
+            ? $this->response->setCache(['public', 'max-age' => 0, 's-maxage' => self::EDGE_TTL])
+            : $this->response->noCache();
 
         return $this->response->setBody($html);
     }
@@ -472,7 +492,7 @@ class Site extends BaseController
         return rtrim($requested, '/') . '/' === $target && str_ends_with($requested, '/') ? null : $this->redirectTo($target);
     }
 
-    private function redirectTo(string $path, int $code = 301): ResponseInterface
+    private function redirectTo(string $path, int $code = 301): RedirectResponse
     {
         $query = $this->request->getUri()->getQuery();
         $keep  = $query !== '' && ! str_contains($path, '?') && ! preg_match('/(^|&)(p|page_id)=/', $query);
