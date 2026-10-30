@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api.js'
 import { flash } from '../notice.js'
+import UploadButton from './UploadButton.vue'
 
 const props = defineProps({ imagesOnly: { type: Boolean, default: false } })
 const emit = defineEmits(['choose', 'close'])
@@ -9,15 +10,14 @@ const emit = defineEmits(['choose', 'close'])
 const items = ref([])
 const q = ref('')
 const uploading = ref(false)
+const dialog = ref(null)
 
 async function load() {
   const result = await api.get('media', { q: q.value, images: props.imagesOnly ? '1' : '0' })
   items.value = result.items
 }
 
-async function upload(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
+async function upload([file]) {
   uploading.value = true
   try {
     const form = new FormData()
@@ -31,23 +31,52 @@ async function upload(event) {
   }
 }
 
-onMounted(load)
+// Escape closes the dialog, except while composing text (IME), or in the search box
+// while it has text, where it clears the box first.
+function onEscape(event) {
+  if (event.isComposing) {
+    event.preventDefault()
+  } else if (event.target.type === 'search' && event.target.value !== '') {
+    event.preventDefault()
+    q.value = ''
+  }
+}
+
+// A click outside the box lands on the <dialog> itself (its backdrop). The press must start
+// there too: a drag from inside the box that ends outside is also dispatched to the <dialog>.
+let pressedBackdrop = false
+
+function onMousedown(event) {
+  pressedBackdrop = event.target === dialog.value
+}
+
+function onClick(event) {
+  if (event.target === dialog.value && pressedBackdrop) emit('close')
+}
+
+// showModal() makes the rest of the page inert and keeps focus inside.
+onMounted(() => {
+  dialog.value.showModal()
+  load()
+})
+
+// close() has the browser return focus to the button that opened the dialog.
+onBeforeUnmount(() => {
+  if (dialog.value?.open) dialog.value.close()
+})
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')" @keydown.esc="emit('close')">
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Choose media">
+  <dialog ref="dialog" class="modal" aria-labelledby="media-picker-title" @keydown.esc="onEscape" @close="emit('close')" @mousedown="onMousedown" @click="onClick">
+    <div class="modal-body">
       <div class="page-head">
-        <h2>Choose {{ imagesOnly ? 'an image' : 'a file' }}</h2>
+        <h2 id="media-picker-title">Choose {{ imagesOnly ? 'an image' : 'a file' }}</h2>
         <button type="button" class="link-button" @click="emit('close')">Close</button>
       </div>
       <form class="filters" @submit.prevent="load">
-        <input v-model="q" type="search" placeholder="Search file names and alt text" aria-label="Search media">
+        <input v-model="q" type="search" placeholder="Search file names and alt text" aria-label="Search media" autofocus>
         <button class="button" type="submit">Search</button>
-        <label class="button primary upload">
-          {{ uploading ? 'Uploading…' : 'Upload' }}
-          <input type="file" :accept="imagesOnly ? 'image/*' : undefined" hidden @change="upload">
-        </label>
+        <UploadButton :accept="imagesOnly ? 'image/*' : undefined" :busy="uploading" @files="upload">{{ uploading ? 'Uploading…' : 'Upload' }}</UploadButton>
       </form>
       <div class="media-grid">
         <button v-for="item in items" :key="item.id" type="button" class="media-tile" @click="emit('choose', item)">
@@ -57,5 +86,5 @@ onMounted(load)
         </button>
       </div>
     </div>
-  </div>
+  </dialog>
 </template>

@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
 import { flash } from '../notice.js'
+import UploadButton from '../components/UploadButton.vue'
 
 const result = ref(null)
 const q = ref('')
@@ -68,10 +69,8 @@ onMounted(load)
 <template>
   <div class="page-head">
     <h1>Media</h1>
-    <label class="button primary upload">
-      {{ uploading ? `Uploading ${uploading}…` : 'Upload files' }}
-      <input type="file" multiple hidden @change="uploadFiles([...$event.target.files])">
-    </label>
+    <!-- Not busy while uploading: uploadFiles() counts uploads, so more can be added. -->
+    <UploadButton multiple @files="uploadFiles">{{ uploading ? `Uploading ${uploading}…` : 'Upload files' }}</UploadButton>
   </div>
   <div class="dropzone" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
     Drop files here to upload. Images get 300px and 1024px copies, like WordPress made.
