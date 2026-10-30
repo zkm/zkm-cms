@@ -37,6 +37,9 @@ const nav = [
     <main class="content">
       <RouterView />
     </main>
-    <p v-if="notice.text" class="notice" :class="notice.kind" role="status">{{ notice.text }}</p>
+    <!-- The live region stays in the page; screen readers miss one that appears with its text. -->
+    <div role="status">
+      <p v-if="notice.text" class="notice" :class="notice.kind">{{ notice.text }}</p>
+    </div>
   </div>
 </template>
