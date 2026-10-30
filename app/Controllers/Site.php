@@ -455,7 +455,8 @@ class Site extends BaseController
     private function cached(string $key, callable $build): ResponseInterface
     {
         $anonymous = visitor_session('user_id') === null && $this->request->getUri()->getQuery() === '';
-        $html      = $anonymous ? SiteCache::remember('page:' . $key, self::CACHE_TTL, $build) : $build();
+        $tribute   = config('Tribute')?->isActive() ? 'tribute:' : '';
+        $html      = $anonymous ? SiteCache::remember('page:' . $tribute . $key, self::CACHE_TTL, $build) : $build();
 
         return $this->response->setBody($html);
     }

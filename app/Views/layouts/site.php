@@ -4,6 +4,8 @@
  *
  * @var array<string, string> $site
  */
+$tribute = config('Tribute');
+$tributeOn = $tribute !== null && $tribute->isActive();
 $themeVersion = static fn (string $file) => esc('/theme/' . $file . '?v=' . (@filemtime(FCPATH . 'theme/' . $file) ?: '1'), 'attr');
 $meta = [
     ['name', 'description', $description],
@@ -62,6 +64,9 @@ $meta = [
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800&amp;family=Rajdhani:wght@400;500;600;700&amp;display=swap">
     <link rel="stylesheet" href="<?= $themeVersion('blocks.css') ?>">
     <link rel="stylesheet" href="<?= $themeVersion('style.css') ?>">
+<?php if ($tributeOn): ?>
+    <link rel="stylesheet" href="<?= $themeVersion('tribute.css') ?>">
+<?php endif ?>
 <?php if ($site['google_tag_id'] !== '' && ENVIRONMENT === 'production'): ?>
     <script async src="https://www.googletagmanager.com/gtag/js?id=<?= esc(rawurlencode($site['google_tag_id']), 'attr') ?>"></script>
     <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','<?= esc($site['google_tag_id'], 'js') ?>');</script>
@@ -111,6 +116,10 @@ $meta = [
         </div>
     </header>
 </div>
+
+<?php if ($tributeOn): ?>
+<?= view('site/tribute_banner', ['tribute' => $tribute]) ?>
+<?php endif ?>
 
 <main id="primary" class="site-main">
     <div class="content-area">
