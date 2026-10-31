@@ -1,6 +1,9 @@
 <?php
 
+use App\Libraries\FormToken;
+use App\Models\ContactMessageModel;
 use App\Models\PostModel;
+use CodeIgniter\I18n\Time;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -43,6 +46,7 @@ final class ContactFormTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         unset($_COOKIE[config('Session')->cookieName]);
+        Time::setTestNow();
 
         if ($this->requestUri === null) {
             unset($_SERVER['REQUEST_URI']);
@@ -112,5 +116,31 @@ final class ContactFormTest extends CIUnitTestCase
 
         $_COOKIE[config('Session')->cookieName] = 'visitor';
         $this->assertStringContainsString('no-store', $this->getPath('/contact/')->response()->getHeaderLine('Cache-Control'));
+    }
+
+    public function testTheTokenEndpointIsNeverCached(): void
+    {
+        $result = $this->get('contact-form/token');
+
+        $result->assertStatus(200);
+        $this->assertStringContainsString('no-store', $result->response()->getHeaderLine('Cache-Control'));
+        $this->assertMatchesRegularExpression('/^\d+\.[0-9a-f]{64}$/', json_decode($result->getJSON(), true)['token']);
+    }
+
+    public function testPostsWithoutAGoodTokenAreNeverStored(): void
+    {
+        $base = rtrim(config('App')->baseURL, '/');
+        $form = ['name' => 'CharlesMes', 'email' => 'bot@example.com', 'message' => 'Read the news and earn https://telegra.ph/x', 'return' => '/contact/'];
+
+        $this->post('contact-form', $form)->assertRedirectTo($base . '/contact/?error=1#contact-form');
+
+        Time::setTestNow('2026-10-31 12:00:00');
+        $fast = $this->post('contact-form', $form + ['form_token' => FormToken::issue()]);
+        $this->assertSame($base . '/contact/?sent=1#contact-form', $fast->getRedirectUrl());
+
+        $forged = $this->post('contact-form', $form + ['form_token' => '1700000000.' . str_repeat('a', 64)]);
+        $this->assertSame($base . '/contact/?sent=1#contact-form', $forged->getRedirectUrl());
+
+        $this->assertSame(0, model(ContactMessageModel::class)->countAllResults());
     }
 }

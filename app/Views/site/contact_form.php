@@ -25,6 +25,8 @@ $sent    = $request->getGet('sent') === '1';
 <?php endif ?>
     <form class="frm-fluent-form" method="post" action="/contact-form">
         <input type="hidden" name="return" value="<?= esc($returnUrl, 'attr') ?>">
+        <input type="hidden" name="form_token" value="" data-contact-token>
+        <noscript><div class="ff-errors-in-stack"><div class="error text-danger">The contact form needs JavaScript turned on.</div></div></noscript>
         <div class="ff-el-group<?= isset($errors['name']) ? ' ff-el-is-error' : '' ?>">
             <div class="ff-el-input--label ff-el-is-required asterisk-right"><label for="contact-name">Name</label></div>
             <div class="ff-el-input--content"><input class="ff-el-form-control" id="contact-name" name="name" type="text" autocomplete="name" required maxlength="200" value="<?= esc($old('name'), 'attr') ?>"></div>

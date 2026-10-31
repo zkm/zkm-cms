@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Filters\AdminAuth;
 use App\Libraries\ContentRenderer;
+use App\Libraries\FormToken;
 use App\Libraries\Permalinks;
 use App\Libraries\SiteCache;
 use App\Models\ContactMessageModel;
@@ -237,6 +238,20 @@ class Site extends BaseController
             return $this->redirectTo($back . '?sent=1#contact-form', 303);
         }
 
+        // The page's script fetches a signed token (contactToken()); bots that post the form
+        // without running it have none, and ones that replay a fresh token are too fast.
+        $problem = FormToken::problem((string) $this->request->getPost('form_token'));
+
+        if ($problem === 'missing') {
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['Please enable JavaScript to send the form, or try again.']);
+        }
+
+        if ($problem !== null) {
+            log_message('notice', 'Contact form dropped ({problem}) from {ip}', ['problem' => $problem, 'ip' => $this->request->getIPAddress()]);
+
+            return $this->redirectTo($back . '?sent=1#contact-form', 303);
+        }
+
         $throttler = service('throttler');
 
         if (! $throttler->check('contact-' . md5($this->request->getIPAddress()), 5, HOUR)) {
@@ -277,6 +292,17 @@ class Site extends BaseController
         }
 
         return $this->redirectTo($back . '?sent=1#contact-form', 303);
+    }
+
+    /**
+     * A fresh contact form token for the page's script. Never cached: each one carries its issue time.
+     */
+    public function contactToken(): ResponseInterface
+    {
+        $this->response->noCache();
+        $this->response->setHeader('X-Robots-Tag', 'noindex');
+
+        return $this->response->setJSON(['token' => FormToken::issue()]);
     }
 
     /**

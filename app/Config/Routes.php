@@ -67,6 +67,7 @@ $routes->match($read, 'wp-sitemap.xml', 'Site::oldSitemap');
 $routes->match($read, 'robots.txt', 'Site::robots');
 $routes->match($read, 'favicon.ico', 'Site::favicon');
 $routes->post('contact-form', 'Site::contact');
+$routes->get('contact-form/token', 'Site::contactToken');
 
 // Everything else: posts, pages, archives, redirects.
 $routes->match($read, '(:any)', 'Site::resolve/$1');

@@ -252,3 +252,32 @@
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', requestParallaxUpdate, { passive: true });
 })();
+
+// Contact form: fetch a signed token (Site::contactToken) so the server can tell a browser
+// from a form-posting bot. If the first fetch fails, try once more on submit.
+(function () {
+  const field = document.querySelector('[data-contact-token]');
+  if (!field) {
+    return;
+  }
+
+  const load = () =>
+    fetch('/contact-form/token', { credentials: 'omit', cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data && data.token) {
+          field.value = data.token;
+        }
+      })
+      .catch(() => {});
+
+  load();
+
+  field.form.addEventListener('submit', (event) => {
+    if (field.value) {
+      return;
+    }
+    event.preventDefault();
+    load().then(() => setTimeout(() => field.form.submit(), 3000));
+  });
+})();
