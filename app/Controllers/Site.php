@@ -13,9 +13,11 @@ use App\Models\PostModel;
 use App\Models\RedirectModel;
 use App\Models\SettingModel;
 use App\Models\TermModel;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\I18n\Time;
 
 /**
  * The public site. URLs match the old WordPress site; see Permalinks.
@@ -240,10 +242,15 @@ class Site extends BaseController
 
         // The page's script fetches a signed token (contactToken()); bots that post the form
         // without running it have none, and ones that replay a fresh token are too fast.
-        $problem = FormToken::problem((string) $this->request->getPost('form_token'));
+        $token   = (string) $this->request->getPost('form_token');
+        $problem = FormToken::problem($token);
 
         if ($problem === 'missing') {
             return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['Please enable JavaScript to send the form, or try again.']);
+        }
+
+        if ($problem === null && ! FormToken::spend($token)) {
+            $problem = 'reused';
         }
 
         if ($problem !== null) {
@@ -277,7 +284,31 @@ class Site extends BaseController
         ];
 
         $messages = model(ContactMessageModel::class);
-        $id       = $messages->insert($data);
+
+        // The same message from the same address again (a bot looping, or someone sending
+        // twice) is stored and emailed only once. The query covers the last 24 hours; the
+        // fingerprint's unique key covers copies posted at the same moment, which the query
+        // can't see because neither has been stored yet.
+        $now    = Time::now();
+        $repeat = $messages->where('email', $data['email'])->where('message', $data['message'])
+            ->where('created_at >=', $now->subDays(1)->toDateTimeString())->countAllResults() > 0;
+
+        $data['fingerprint'] = hash('sha256', mb_strtolower($data['email']) . "\n" . $now->format('Y-m-d') . "\n" . $data['message']);
+
+        try {
+            $id = $repeat ? false : $messages->insert($data);
+        } catch (DatabaseException $e) {
+            if ($e->getCode() !== 1062) {  // ER_DUP_ENTRY
+                throw $e;
+            }
+            $id = false;
+        }
+
+        if ($id === false) {
+            log_message('notice', 'Contact form dropped (duplicate) from {ip}', ['ip' => $data['ip']]);
+
+            return $this->redirectTo($back . '?sent=1#contact-form', 303);
+        }
 
         $email = service('email');
         $email->setTo($this->settings->value('contact_email'));

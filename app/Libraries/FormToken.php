@@ -10,7 +10,8 @@ use CodeIgniter\I18n\Time;
  *
  * The page fetches a token from /contact-form/token: the issue time plus an HMAC of it.
  * Form-posting bots that never run JavaScript don't have one, and those that replay a
- * token straight away fail the minimum age.
+ * token straight away fail the minimum age. Each token is spent on use, so one fetched
+ * token can't be posted over and over.
  */
 final class FormToken
 {
@@ -44,6 +45,24 @@ final class FormToken
         }
 
         return $age > self::MAX_AGE ? 'expired' : null;
+    }
+
+    /**
+     * Marks a good token as used. False when it was already used: a replay, a double
+     * click, or the browser re-posting the form.
+     */
+    public static function spend(string $token): bool
+    {
+        $key = 'contact-token-' . hash('sha256', $token);
+
+        if (cache()->get($key) !== null) {
+            return false;
+        }
+
+        // Kept a little past MAX_AGE, so a token can never outlive its "used" mark.
+        cache()->save($key, 1, self::MAX_AGE + 60);
+
+        return true;
     }
 
     private static function sign(string $issued): string

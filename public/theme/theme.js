@@ -273,11 +273,39 @@
 
   load();
 
+  const button = field.form.querySelector('[type="submit"]');
+  let sending = false;
+
   field.form.addEventListener('submit', (event) => {
+    // One submission per page load: a second click would only post the same message again.
+    if (sending) {
+      event.preventDefault();
+      return;
+    }
+    sending = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Sending…';
+    }
     if (field.value) {
       return;
     }
     event.preventDefault();
     load().then(() => setTimeout(() => field.form.submit(), 3000));
+  });
+
+  // Coming back with the Back button can restore the page as it was left: let the form be
+  // sent again, with a new token (the old one has been used).
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) {
+      return;
+    }
+    sending = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Send';
+    }
+    field.value = '';
+    load();
   });
 })();

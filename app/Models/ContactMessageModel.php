@@ -8,7 +8,7 @@ class ContactMessageModel extends Model
 {
     protected $table         = 'contact_messages';
     protected $returnType    = 'array';
-    protected $allowedFields = ['name', 'email', 'message', 'ip', 'user_agent', 'emailed', 'read_at'];
+    protected $allowedFields = ['name', 'email', 'message', 'ip', 'user_agent', 'fingerprint', 'emailed', 'read_at'];
 
     protected $useTimestamps = true;
     protected $updatedField  = '';
