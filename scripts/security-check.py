@@ -165,6 +165,22 @@ def main():
     check('zkm_session' not in (headers.get('Set-Cookie') or ''), 'public pages set no session cookie')
     check(not headers.get('X-Powered-By'), 'no X-Powered-By', headers.get('X-Powered-By', ''))
 
+    print('Shared caches')
+    # Only a visitor with no session may get a page Cloudflare can keep. Posts and pages go
+    # through resolve(), which can start the session before the cache headers are chosen,
+    # and starting it swaps a malformed cookie for a new one. A fresh client, so the
+    # replacement cookie doesn't reach the other checks.
+    _, _, sitemap = site.request('GET', '/sitemap.xml')
+    pages = ['/'] + [urllib.parse.urlparse(loc.decode()).path for loc in re.findall(rb'<loc>([^<]+)</loc>', sitemap)[:3]]
+    for path in pages:
+        _, headers, _ = Client(args.base).request('GET', path)
+        cache = headers.get('Cache-Control', '')
+        check('no-store' in cache or 'public' in cache, f'{path} without a session -> {cache}')
+        for cookie in ('zkm_session=x', 'zkm_session=' + uuid.uuid4().hex):
+            _, headers, _ = Client(args.base).request('GET', path, headers={'Cookie': cookie})
+            cache = headers.get('Cache-Control', '')
+            check('public' not in cache and 'no-store' in cache, f'{path} with {cookie[:14]}… is not shared -> {cache}')
+
     if args.expect_admin_gated:
         # This machine gets the site's 404 page for /admin/login, not the sign-in page.
         print('  (admin headers not checked: the sign-in page is hidden from this machine)')
