@@ -254,12 +254,16 @@
 })();
 
 // Contact form: fetch a signed token (Site::contactToken) so the server can tell a browser
-// from a form-posting bot. If the first fetch fails, try once more on submit.
+// from a form-posting bot. If the first fetch failed, or the token is near the end of its
+// day (FormToken::MAX_AGE) because the page was left open, fetch a new one on submit.
 (function () {
   const field = document.querySelector('[data-contact-token]');
   if (!field) {
     return;
   }
+
+  const MAX_AGE_MS = 23 * 60 * 60 * 1000; // an hour short of the server's limit
+  let loadedAt = 0;
 
   const load = () =>
     fetch('/contact-form/token', { credentials: 'omit', cache: 'no-store' })
@@ -267,6 +271,7 @@
       .then((data) => {
         if (data && data.token) {
           field.value = data.token;
+          loadedAt = Date.now();
         }
       })
       .catch(() => {});
@@ -287,10 +292,12 @@
       button.disabled = true;
       button.textContent = 'Sending…';
     }
-    if (field.value) {
+    if (field.value && Date.now() - loadedAt < MAX_AGE_MS) {
       return;
     }
     event.preventDefault();
+    field.value = '';
+    // The server wants a token at least 3 seconds old (FormToken::MIN_AGE).
     load().then(() => setTimeout(() => field.form.submit(), 3000));
   });
 

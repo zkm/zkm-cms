@@ -148,6 +148,22 @@ final class ContactFormTest extends CIUnitTestCase
         $this->assertSame(0, model(ContactMessageModel::class)->countAllResults());
     }
 
+    public function testAnExpiredTokenAsksForTheMessageAgain(): void
+    {
+        $base = rtrim(config('App')->baseURL, '/');
+        $form = ['name' => 'Ann', 'email' => 'ann@example.com', 'message' => 'Written after a long weekend', 'return' => '/contact/'];
+
+        Time::setTestNow('2026-10-31 12:00:00');
+        $token = FormToken::issue();
+        Time::setTestNow('2026-11-02 09:00:00');
+
+        $result = $this->post('contact-form', $form + ['form_token' => $token]);
+
+        $result->assertRedirectTo($base . '/contact/?error=1#contact-form');
+        $result->assertSessionHas('contact_errors', ['The form timed out. Please send it again.']);
+        $this->assertSame(0, model(ContactMessageModel::class)->countAllResults());
+    }
+
     public function testATokenWorksOnlyOnce(): void
     {
         $base = rtrim(config('App')->baseURL, '/');

@@ -249,6 +249,14 @@ class Site extends BaseController
             return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['Please enable JavaScript to send the form, or try again.']);
         }
 
+        // Most likely a person who left the page open for a day: say so and keep what they
+        // wrote, rather than show "sent" and drop it. The page loads a new token.
+        if ($problem === 'expired') {
+            log_message('notice', 'Contact form token expired from {ip}', ['ip' => $this->request->getIPAddress()]);
+
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['The form timed out. Please send it again.']);
+        }
+
         if ($problem === null && ! FormToken::spend($token)) {
             $problem = 'reused';
         }
