@@ -252,3 +252,67 @@
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', requestParallaxUpdate, { passive: true });
 })();
+
+// Contact form: fetch a signed token (Site::contactToken) so the server can tell a browser
+// from a form-posting bot. If the first fetch failed, or the token is near the end of its
+// day (FormToken::MAX_AGE) because the page was left open, fetch a new one on submit.
+(function () {
+  const field = document.querySelector('[data-contact-token]');
+  if (!field) {
+    return;
+  }
+
+  const MAX_AGE_MS = 23 * 60 * 60 * 1000; // an hour short of the server's limit
+  let loadedAt = 0;
+
+  const load = () =>
+    fetch('/contact-form/token', { credentials: 'omit', cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data && data.token) {
+          field.value = data.token;
+          loadedAt = Date.now();
+        }
+      })
+      .catch(() => {});
+
+  load();
+
+  const button = field.form.querySelector('[type="submit"]');
+  let sending = false;
+
+  field.form.addEventListener('submit', (event) => {
+    // One submission per page load: a second click would only post the same message again.
+    if (sending) {
+      event.preventDefault();
+      return;
+    }
+    sending = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Sending…';
+    }
+    if (field.value && Date.now() - loadedAt < MAX_AGE_MS) {
+      return;
+    }
+    event.preventDefault();
+    field.value = '';
+    // The server wants a token at least 3 seconds old (FormToken::MIN_AGE).
+    load().then(() => setTimeout(() => field.form.submit(), 3000));
+  });
+
+  // Coming back with the Back button can restore the page as it was left: let the form be
+  // sent again, with a new token (the old one has been used).
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) {
+      return;
+    }
+    sending = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Send';
+    }
+    field.value = '';
+    load();
+  });
+})();

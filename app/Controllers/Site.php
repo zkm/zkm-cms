@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Filters\AdminAuth;
 use App\Libraries\ContentRenderer;
+use App\Libraries\FormToken;
 use App\Libraries\Permalinks;
 use App\Libraries\SiteCache;
 use App\Models\ContactMessageModel;
@@ -12,9 +13,11 @@ use App\Models\PostModel;
 use App\Models\RedirectModel;
 use App\Models\SettingModel;
 use App\Models\TermModel;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\I18n\Time;
 
 /**
  * The public site. URLs match the old WordPress site; see Permalinks.
@@ -237,6 +240,33 @@ class Site extends BaseController
             return $this->redirectTo($back . '?sent=1#contact-form', 303);
         }
 
+        // The page's script fetches a signed token (contactToken()); bots that post the form
+        // without running it have none, and ones that replay a fresh token are too fast.
+        $token   = (string) $this->request->getPost('form_token');
+        $problem = FormToken::problem($token);
+
+        if ($problem === 'missing') {
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['Please enable JavaScript to send the form, or try again.']);
+        }
+
+        // Most likely a person who left the page open for a day: say so and keep what they
+        // wrote, rather than show "sent" and drop it. The page loads a new token.
+        if ($problem === 'expired') {
+            log_message('notice', 'Contact form token expired from {ip}', ['ip' => $this->request->getIPAddress()]);
+
+            return $this->redirectTo($back . '?error=1#contact-form', 303)->withInput()->with('contact_errors', ['The form timed out. Please send it again.']);
+        }
+
+        if ($problem === null && ! FormToken::spend($token)) {
+            $problem = 'reused';
+        }
+
+        if ($problem !== null) {
+            log_message('notice', 'Contact form dropped ({problem}) from {ip}', ['problem' => $problem, 'ip' => $this->request->getIPAddress()]);
+
+            return $this->redirectTo($back . '?sent=1#contact-form', 303);
+        }
+
         $throttler = service('throttler');
 
         if (! $throttler->check('contact-' . md5($this->request->getIPAddress()), 5, HOUR)) {
@@ -262,7 +292,31 @@ class Site extends BaseController
         ];
 
         $messages = model(ContactMessageModel::class);
-        $id       = $messages->insert($data);
+
+        // The same message from the same address again (a bot looping, or someone sending
+        // twice) is stored and emailed only once. The query covers the last 24 hours; the
+        // fingerprint's unique key covers copies posted at the same moment, which the query
+        // can't see because neither has been stored yet.
+        $now    = Time::now();
+        $repeat = $messages->where('email', $data['email'])->where('message', $data['message'])
+            ->where('created_at >=', $now->subDays(1)->toDateTimeString())->countAllResults() > 0;
+
+        $data['fingerprint'] = hash('sha256', mb_strtolower($data['email']) . "\n" . $now->format('Y-m-d') . "\n" . $data['message']);
+
+        try {
+            $id = $repeat ? false : $messages->insert($data);
+        } catch (DatabaseException $e) {
+            if ($e->getCode() !== 1062) {  // ER_DUP_ENTRY
+                throw $e;
+            }
+            $id = false;
+        }
+
+        if ($id === false) {
+            log_message('notice', 'Contact form dropped (duplicate) from {ip}', ['ip' => $data['ip']]);
+
+            return $this->redirectTo($back . '?sent=1#contact-form', 303);
+        }
 
         $email = service('email');
         $email->setTo($this->settings->value('contact_email'));
@@ -277,6 +331,17 @@ class Site extends BaseController
         }
 
         return $this->redirectTo($back . '?sent=1#contact-form', 303);
+    }
+
+    /**
+     * A fresh contact form token for the page's script. Never cached: each one carries its issue time.
+     */
+    public function contactToken(): ResponseInterface
+    {
+        $this->response->noCache();
+        $this->response->setHeader('X-Robots-Tag', 'noindex');
+
+        return $this->response->setJSON(['token' => FormToken::issue()]);
     }
 
     /**
@@ -423,7 +488,9 @@ class Site extends BaseController
 
         $data['documentTitle'] = $data['title'] !== null ? $data['title'] . ' – ' . $site['site_name'] : $site['site_name'] . ' – ' . $site['tagline'];
         $data['description'] ??= $site['tagline'];
-        $data['ogImage'] ??= ['url' => $this->absolute('/theme/images/social-card.jpg'), 'width' => 1200, 'height' => 630, 'alt' => $site['site_name'] . ' – ' . $site['tagline']];
+        // Versioned so social scrapers and Cloudflare pick up a replaced card.
+        $card = 'theme/images/social-card.jpg';
+        $data['ogImage'] ??= ['url' => $this->absolute('/' . $card . '?v=' . (@filemtime(FCPATH . $card) ?: '1')), 'width' => 1200, 'height' => 630, 'alt' => $site['site_name'] . ' – ' . $site['tagline']];
         $data['canonicalUrl'] = $data['canonical'] !== null ? $this->absolute($data['canonical']) : null;
         $data['primaryMenu']  = menu_links('primary');
         $data['socialMenu']   = menu_links('social');
